@@ -18,6 +18,7 @@ import {
 import { Grid } from "@/components/Grid";
 import { Header } from "@/components/Header";
 import { Reveal } from "@/components/Reveal";
+import { recordSubmission } from "@/lib/stats";
 
 const INSTRUCTION_KEY = "cutline_instructions_seen";
 
@@ -91,6 +92,11 @@ export default function HomePage() {
       });
       setResult(response);
       markSubmitted(puzzle.date, response);
+      recordSubmission({
+        puzzleDate: puzzle.date,
+        score: response.score,
+        perfect: response.perfect,
+      });
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Submit failed";
       setError(msg);

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import type { PlayerResult, SubmitResponse } from "@/lib/api";
 import { Card } from "./Card";
 import { ShareButton } from "./ShareButton";
+import { Stats } from "./Stats";
 import { timeUntilNextPuzzle } from "@/lib/share";
 
 type RevealProps = {
@@ -25,6 +26,8 @@ export function Reveal({ response, category }: RevealProps) {
     }, 1000);
     return () => window.clearInterval(id);
   }, []);
+
+  const [statsOpen, setStatsOpen] = useState(false);
 
   return (
     <section className="flex flex-col gap-5">
@@ -66,11 +69,26 @@ export function Reveal({ response, category }: RevealProps) {
       </p>
 
       <div className="flex flex-col items-center gap-3">
-        <ShareButton text={share_text} />
+        <div className="flex items-center gap-3">
+          <ShareButton text={share_text} />
+          <button
+            type="button"
+            onClick={() => setStatsOpen(true)}
+            className="rounded-full border border-navy-100/40 px-6 py-2 text-sm font-bold text-navy-50 transition hover:bg-navy-100/10 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+          >
+            Stats
+          </button>
+        </div>
         <p className="text-xs text-navy-100/60">
           Next puzzle in <span className="font-mono">{countdown}</span>
         </p>
       </div>
+
+      <Stats
+        open={statsOpen}
+        onClose={() => setStatsOpen(false)}
+        highlightScore={score}
+      />
 
       <details className="rounded-lg bg-navy-700/40 p-3 text-sm">
         <summary className="cursor-pointer text-navy-100/80">
