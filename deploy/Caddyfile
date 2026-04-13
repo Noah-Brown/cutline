@@ -1,0 +1,27 @@
+# Cutline reverse proxy.
+#
+# CUTLINE_DOMAIN controls the site name:
+#   • Set to a real DNS name (e.g. cutline.example.com) → Caddy auto-provisions
+#     a Let's Encrypt cert and serves HTTPS.
+#   • Leave unset (defaults to ":80") → HTTP only, useful for local docker-compose.
+
+{$CUTLINE_DOMAIN::80} {
+    encode zstd gzip
+
+    # Backend routes — API, photos, health.
+    @backend path /api/* /photos/* /health
+    handle @backend {
+        reverse_proxy backend:8000
+    }
+
+    # Everything else → Next.js frontend.
+    handle {
+        reverse_proxy frontend:3000
+    }
+
+    # Sensible logging in JSON for whatever log shipper you wire up later.
+    log {
+        output stdout
+        format json
+    }
+}

@@ -73,10 +73,120 @@ NEXT_PUBLIC_API_BASE=http://localhost:8000 npm run dev
 
 Frontend serves on `http://localhost:3000`.
 
-### Docker
+## Deploying to an Ubuntu server
+
+The included `docker-compose.yml` runs the full stack — Postgres, FastAPI
+backend, Next.js frontend, and Caddy as a reverse proxy with **automatic
+HTTPS** via Let's Encrypt.
+
+### One-time host setup
 
 ```bash
-docker-compose up -d postgres
+# Install Docker Engine + the compose plugin (Ubuntu 22.04 / 24.04)
+sudo apt update
+sudo apt install -y ca-certificates curl gnupg
+sudo install -m 0755 -d /etc/apt/keyrings
+curl -fsSL https://download.docker.com/linux/ubuntu/gpg | \
+  sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] \
+  https://download.docker.com/linux/ubuntu $(lsb_release -cs) stable" | \
+  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+sudo apt update
+sudo apt install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin
+
+# Open the web ports (skip if you already use ufw / a cloud firewall)
+sudo ufw allow 80/tcp
+sudo ufw allow 443/tcp
+```
+
+### Configure and launch
+
+```bash
+# 1. Clone the repo
+git clone https://github.com/Noah-Brown/cutline.git
+cd cutline
+
+# 2. Configure
+cp .env.example .env
+$EDITOR .env
+#   • Set CUTLINE_DOMAIN to your DNS name (skip for HTTP-only on port 80).
+#   • Set ADMIN_TOKEN to a random secret (e.g. `openssl rand -hex 32`).
+#   • Set POSTGRES_PASSWORD to something strong.
+
+# 3. Build + start everything (postgres → migrate → backend → frontend → caddy)
+sudo docker compose up -d --build
+
+# 4. Seed today's sample puzzle (optional, for first-day demo)
+sudo docker compose exec backend python -m scripts.seed_sample
+```
+
+That's it. Visit your domain (or `http://<server-ip>` if no DNS) to play.
+
+### Operating
+
+```bash
+# Tail logs
+sudo docker compose logs -f backend
+sudo docker compose logs -f caddy
+
+# Restart a single service after an env change
+sudo docker compose up -d backend
+
+# Rebuild the frontend after changing NEXT_PUBLIC_API_BASE
+sudo docker compose build frontend && sudo docker compose up -d frontend
+
+# Open a Postgres shell
+sudo docker compose exec postgres psql -U cutline -d cutline
+```
+
+### Loading Lahman data on the server
+
+The host's `./data/` directory is mounted read-only into the backend container
+at `/data/lahman`. To ingest:
+
+```bash
+# Copy the zip up to the server (from your laptop)
+scp baseballdatabank-2024.zip user@server:/path/to/cutline/data/
+
+# Run the ingest inside the running backend container
+sudo docker compose exec backend \
+  python -m scripts.ingest_lahman --zip /data/lahman/baseballdatabank-2024.zip
+```
+
+### TLS / DNS notes
+
+When `CUTLINE_DOMAIN` is set to a real DNS name and the domain resolves to
+this server, Caddy automatically requests and renews a Let's Encrypt
+certificate. Certs are persisted in the `caddy_data` volume across restarts.
+
+Common gotchas:
+- The DNS A record must be live **before** the first `docker compose up`,
+  otherwise Caddy's ACME challenge fails. Rate limits apply.
+- If you change `CUTLINE_DOMAIN`, run `docker compose up -d caddy` to pick
+  it up.
+- Behind another reverse proxy (Cloudflare proxied DNS, AWS ALB)? Disable
+  Caddy's auto-TLS by setting `CUTLINE_DOMAIN=:80` and let the upstream
+  handle TLS.
+
+### Persistent state
+
+| Volume         | Contents                                 |
+| -------------- | ---------------------------------------- |
+| `pgdata`       | Postgres database files                  |
+| `photos`       | Uploaded player headshots                 |
+| `caddy_data`   | TLS certs and Caddy state                |
+| `caddy_config` | Caddy admin API config                   |
+
+Back these up with `docker run --rm -v <volume>:/v -v $PWD:/backup alpine tar czf /backup/<name>.tgz -C /v .`.
+
+### Local dev with the same compose stack
+
+For a smoke test on your laptop, the defaults give you HTTP-only on
+`http://localhost`:
+
+```bash
+cp .env.example .env   # leave CUTLINE_DOMAIN commented out
+docker compose up --build
 ```
 
 ## Data pipeline

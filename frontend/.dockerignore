@@ -1,0 +1,14 @@
+node_modules/
+.next/
+out/
+dist/
+build/
+*.log
+.env*.local
+
+# Editor / build caches
+.vscode/
+.idea/
+.DS_Store
+tsconfig.tsbuildinfo
+.next-env.d.ts.bak

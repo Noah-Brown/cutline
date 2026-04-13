@@ -1,22 +1,97 @@
 version: "3.9"
 
+# Cutline production stack.
+# See .env.example for all configurable variables.
+# Quick start:
+#   cp .env.example .env && $EDITOR .env
+#   docker compose up -d --build
+
 services:
   postgres:
     image: postgres:16-alpine
     container_name: cutline-postgres
     environment:
-      POSTGRES_USER: cutline
-      POSTGRES_PASSWORD: cutline
-      POSTGRES_DB: cutline
-    ports:
-      - "5432:5432"
+      POSTGRES_USER: ${POSTGRES_USER:-cutline}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cutline}
+      POSTGRES_DB: ${POSTGRES_DB:-cutline}
     volumes:
-      - cutline-pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql/data
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cutline -d cutline"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cutline} -d ${POSTGRES_DB:-cutline}"]
       interval: 5s
       timeout: 5s
-      retries: 10
+      retries: 20
+
+  # One-shot: applies Alembic migrations, then exits successfully.
+  # The backend service waits for this to complete before starting.
+  migrate:
+    build:
+      context: ./backend
+    container_name: cutline-migrate
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cutline}:${POSTGRES_PASSWORD:-cutline}@postgres:5432/${POSTGRES_DB:-cutline}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  backend:
+    build:
+      context: ./backend
+    container_name: cutline-backend
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-cutline}:${POSTGRES_PASSWORD:-cutline}@postgres:5432/${POSTGRES_DB:-cutline}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-change-me-please}
+      CORS_ORIGINS: ${CORS_ORIGINS:-["http://localhost"]}
+      GAME_NAME: ${GAME_NAME:-Cutline}
+      PHOTO_UPLOAD_DIR: /data/photos
+      PHOTO_URL_PREFIX: /photos
+    volumes:
+      - photos:/data/photos
+      # Mount ./data for ingesting Lahman zips: copy a zip to ./data/
+      # then `docker compose exec backend python -m scripts.ingest_lahman --zip /data/<file>.zip`
+      - ./data:/data/lahman:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        # NEXT_PUBLIC_* values are baked into the bundle at BUILD time —
+        # changing this requires `docker compose build frontend`.
+        # Default empty → client uses relative paths via the reverse proxy.
+        NEXT_PUBLIC_API_BASE: ${NEXT_PUBLIC_API_BASE:-}
+    container_name: cutline-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+
+  caddy:
+    image: caddy:2-alpine
+    container_name: cutline-caddy
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      CUTLINE_DOMAIN: ${CUTLINE_DOMAIN:-:80}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - frontend
+      - backend
+    restart: unless-stopped
 
 volumes:
-  cutline-pgdata:
+  pgdata:
+  photos:
+  caddy_data:
+  caddy_config:

@@ -42,8 +42,10 @@ export type SubmitResponse = {
   share_text: string;
 };
 
-const API_BASE =
-  process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+// Baked in at build time. Default is an empty string → the browser uses
+// relative paths like "/api/puzzle/today", which the reverse proxy routes
+// to the backend. For local dev, set NEXT_PUBLIC_API_BASE=http://localhost:8000.
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE ?? "";
 
 /** Resolve a possibly-relative photo URL against the API base. */
 export function resolvePhotoUrl(photoUrl: string | null | undefined): string | null {

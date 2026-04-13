@@ -1,0 +1,19 @@
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+tests/
+uploads/
+*.sqlite
+*.db
+_cutline_test.db
+
+# Stray dev DBs
+cutline.db
