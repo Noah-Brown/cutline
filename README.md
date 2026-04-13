@@ -26,14 +26,18 @@ cutline/
 
 ## Scoring
 
-| Event                                   | Points |
-| --------------------------------------- | ------ |
-| Qualifier tapped (correct selection)    | +1     |
-| Imposter tapped (false positive)        | −1     |
-| Qualifier not tapped (missed qualifier) | −1     |
-| Imposter not tapped (correctly avoided) | 0      |
+Each card is a tri-state mark: **YES** (you think it qualifies), **NO** (you
+think it's an imposter), or **blank** (unsure). Tap to cycle blank → YES → NO
+→ blank.
 
-Max score = number of qualifiers in the puzzle (5, 6, or 7).
+|                | Qualifier          | Imposter          |
+| -------------- | ------------------ | ----------------- |
+| 🟢 YES (green) | **+1** correct      | **−1** false positive |
+| 🔴 NO (red)    | **−1** wrong reject | **+1** correct identify |
+| ⚪ Blank        | 0                  | 0                 |
+
+Max score = **9** (one point per confident-and-right answer). Min = −9.
+Blanks are free, so cautious play is viable.
 
 ## Quick start
 
@@ -80,8 +84,11 @@ docker-compose up -d postgres
 Primary source: [Chadwick Bureau Lahman Baseball Database](https://github.com/chadwickbureau/baseballdatabank).
 
 ```bash
-# Clone Lahman into data/lahman/ then run ingestion
-python -m scripts.ingest_lahman --path ../data/lahman/core
+# Option A: a directory of CSVs (e.g. a clone of baseballdatabank)
+python -m scripts.ingest_lahman --path ../data/baseballdatabank
+
+# Option B: a zip archive — no unzip step needed
+python -m scripts.ingest_lahman --zip  ../data/baseballdatabank-2024.zip
 ```
 
 The ingest loads `People.csv`, `AwardsPlayers.csv`, `Batting.csv`, `Pitching.csv`,

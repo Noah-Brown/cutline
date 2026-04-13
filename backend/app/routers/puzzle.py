@@ -21,7 +21,7 @@ from app.schemas import (
     SubmitRequest,
     SubmitResponse,
 )
-from app.scoring import render_share_text, score_submission
+from app.scoring import Mark, render_share_text, score_submission
 
 router = APIRouter(prefix="/api/puzzle", tags=["puzzle"])
 
@@ -216,12 +216,17 @@ async def submit(
         )
 
     entries_tuple = [(e.grid_position, e.is_qualifier) for e in puzzle.entries]
-    result = score_submission(entries_tuple, set(body.selections))
+    marks_map: dict[int, Mark] = {}
+    for pos in body.marks.yes:
+        marks_map[pos] = Mark.YES
+    for pos in body.marks.no:
+        marks_map[pos] = Mark.NO
+    result = score_submission(entries_tuple, marks_map)
 
     submission = Submission(
         puzzle_id=puzzle.id,
         session_id=body.session_id,
-        selections=body.selections,
+        selections={"yes": body.marks.yes, "no": body.marks.no},
         score=result.score,
         max_score=result.max_score,
         perfect=result.perfect,
@@ -240,7 +245,7 @@ async def submit(
                 player_id=entry.player_id,
                 name=entry.player.name_display,
                 is_qualifier=entry.is_qualifier,
-                was_selected=outcome.was_selected,
+                mark=outcome.mark.value,
                 result=outcome.result.value,
                 explanation=entry.explanation,
             )

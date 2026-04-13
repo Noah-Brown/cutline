@@ -12,18 +12,21 @@ export type PuzzleResponse = {
   players: PuzzlePlayer[];
 };
 
+export type Mark = "yes" | "no" | "blank";
+
 export type ResultKind =
   | "correct"
   | "false_positive"
-  | "missed"
-  | "correct_avoid";
+  | "correct_reject"
+  | "wrong_reject"
+  | "unanswered";
 
 export type PlayerResult = {
   grid_position: number;
   player_id: number;
   name: string;
   is_qualifier: boolean;
-  was_selected: boolean;
+  mark: Mark;
   result: ResultKind;
   explanation: string;
 };
@@ -59,10 +62,12 @@ export async function fetchToday(): Promise<PuzzleResponse> {
   return handle<PuzzleResponse>(res);
 }
 
-export async function submitSelections(args: {
+export type MarksPayload = { yes: number[]; no: number[] };
+
+export async function submitMarks(args: {
   puzzleId: number;
   sessionId: string;
-  selections: number[];
+  marks: MarksPayload;
 }): Promise<SubmitResponse> {
   const res = await fetch(`${API_BASE}/api/puzzle/submit`, {
     method: "POST",
@@ -70,7 +75,7 @@ export async function submitSelections(args: {
     body: JSON.stringify({
       puzzle_id: args.puzzleId,
       session_id: args.sessionId,
-      selections: args.selections,
+      marks: args.marks,
     }),
   });
   return handle<SubmitResponse>(res);

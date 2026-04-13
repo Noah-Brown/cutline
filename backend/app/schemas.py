@@ -25,22 +25,44 @@ class PuzzleResponse(BaseModel):
     players: list[PuzzlePlayer]
 
 
-class SubmitRequest(BaseModel):
-    puzzle_id: int
-    session_id: str = Field(min_length=1, max_length=100)
-    selections: list[int]
+class SubmissionMarks(BaseModel):
+    """Tri-state marks for a submission. Positions not in either list are BLANK."""
 
-    @field_validator("selections")
+    yes: list[int] = Field(default_factory=list)
+    no: list[int] = Field(default_factory=list)
+
+    @field_validator("yes", "no")
     @classmethod
     def _valid_positions(cls, v: list[int]) -> list[int]:
         if any(p < 0 or p > 8 for p in v):
             raise ValueError("grid_position must be in [0, 8]")
         if len(set(v)) != len(v):
-            raise ValueError("selections must not contain duplicates")
+            raise ValueError("positions must not contain duplicates")
         return sorted(set(v))
 
 
-ResultLiteral = Literal["correct", "false_positive", "missed", "correct_avoid"]
+class SubmitRequest(BaseModel):
+    puzzle_id: int
+    session_id: str = Field(min_length=1, max_length=100)
+    marks: SubmissionMarks
+
+    @field_validator("marks")
+    @classmethod
+    def _disjoint(cls, v: SubmissionMarks) -> SubmissionMarks:
+        overlap = set(v.yes) & set(v.no)
+        if overlap:
+            raise ValueError(f"positions cannot be in both yes and no: {sorted(overlap)}")
+        return v
+
+
+ResultLiteral = Literal[
+    "correct",
+    "false_positive",
+    "correct_reject",
+    "wrong_reject",
+    "unanswered",
+]
+MarkLiteral = Literal["yes", "no", "blank"]
 
 
 class PlayerResult(BaseModel):
@@ -48,7 +70,7 @@ class PlayerResult(BaseModel):
     player_id: int
     name: str
     is_qualifier: bool
-    was_selected: bool
+    mark: MarkLiteral
     result: ResultLiteral
     explanation: str
 

@@ -3,36 +3,60 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   fetchToday,
-  submitSelections,
+  submitMarks,
+  type Mark,
+  type MarksPayload,
   type PuzzleResponse,
   type SubmitResponse,
 } from "@/lib/api";
 import {
   getSessionId,
   hasSubmitted,
+  loadMarks,
   loadResults,
-  loadSelections,
   markSubmitted,
-  saveSelections,
+  saveMarks,
 } from "@/lib/session";
 import { Grid } from "@/components/Grid";
 import { Header } from "@/components/Header";
 import { Reveal } from "@/components/Reveal";
 import { recordSubmission } from "@/lib/stats";
 
-const INSTRUCTION_KEY = "cutline_instructions_seen";
+const INSTRUCTION_KEY = "cutline_instructions_seen_v2";
+
+function nextMark(current: Mark): Mark {
+  if (current === "blank") return "yes";
+  if (current === "yes") return "no";
+  return "blank";
+}
+
+function marksToPayload(marks: Map<number, Mark>): MarksPayload {
+  const yes: number[] = [];
+  const no: number[] = [];
+  for (const [pos, mark] of marks.entries()) {
+    if (mark === "yes") yes.push(pos);
+    else if (mark === "no") no.push(pos);
+  }
+  return { yes: yes.sort((a, b) => a - b), no: no.sort((a, b) => a - b) };
+}
+
+function payloadToMarks(payload: MarksPayload): Map<number, Mark> {
+  const map = new Map<number, Mark>();
+  for (const p of payload.yes) map.set(p, "yes");
+  for (const p of payload.no) map.set(p, "no");
+  return map;
+}
 
 export default function HomePage() {
   const [puzzle, setPuzzle] = useState<PuzzleResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
-  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [marks, setMarks] = useState<Map<number, Mark>>(new Map());
   const [submitting, setSubmitting] = useState(false);
   const [result, setResult] = useState<SubmitResponse | null>(null);
   const [showInstructions, setShowInstructions] = useState(false);
 
-  // Load today's puzzle + restore local state.
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -45,8 +69,10 @@ export default function HomePage() {
           const cached = loadResults(p.date);
           if (cached) setResult(cached);
         } else {
-          const prev = loadSelections(p.date);
-          if (prev.length) setSelected(new Set(prev));
+          const prev = loadMarks(p.date);
+          if (prev.yes.length + prev.no.length > 0) {
+            setMarks(payloadToMarks(prev));
+          }
         }
 
         if (!window.localStorage.getItem(INSTRUCTION_KEY)) {
@@ -66,14 +92,16 @@ export default function HomePage() {
     };
   }, []);
 
-  const toggle = useCallback(
+  const cycle = useCallback(
     (pos: number) => {
       if (!puzzle) return;
-      setSelected((prev) => {
-        const next = new Set(prev);
-        if (next.has(pos)) next.delete(pos);
-        else next.add(pos);
-        saveSelections(puzzle.date, Array.from(next).sort((a, b) => a - b));
+      setMarks((prev) => {
+        const next = new Map(prev);
+        const current = next.get(pos) ?? "blank";
+        const after = nextMark(current);
+        if (after === "blank") next.delete(pos);
+        else next.set(pos, after);
+        saveMarks(puzzle.date, marksToPayload(next));
         return next;
       });
     },
@@ -85,10 +113,10 @@ export default function HomePage() {
     setSubmitting(true);
     setError(null);
     try {
-      const response = await submitSelections({
+      const response = await submitMarks({
         puzzleId: puzzle.puzzle_id,
         sessionId: getSessionId(),
-        selections: Array.from(selected).sort((a, b) => a - b),
+        marks: marksToPayload(marks),
       });
       setResult(response);
       markSubmitted(puzzle.date, response);
@@ -103,14 +131,15 @@ export default function HomePage() {
     } finally {
       setSubmitting(false);
     }
-  }, [puzzle, selected, submitting]);
+  }, [puzzle, marks, submitting]);
 
   const dismissInstructions = () => {
     window.localStorage.setItem(INSTRUCTION_KEY, "1");
     setShowInstructions(false);
   };
 
-  const canSubmit = selected.size > 0 && !submitting;
+  const markCount = marks.size;
+  const canSubmit = markCount > 0 && !submitting;
 
   const content = useMemo(() => {
     if (loading) {
@@ -147,10 +176,15 @@ export default function HomePage() {
 
         <Grid
           players={puzzle.players}
-          selected={selected}
-          onToggle={toggle}
+          marks={marks}
+          onCycle={cycle}
           disabled={submitting}
         />
+
+        <p className="text-center text-[11px] text-navy-100/60">
+          Tap to cycle: blank → <span className="text-emerald-300">YES</span> →{" "}
+          <span className="text-red-300">NO</span> → blank
+        </p>
 
         <div className="flex flex-col items-center gap-2">
           <button
@@ -162,14 +196,14 @@ export default function HomePage() {
             {submitting ? "Submitting…" : "Submit"}
           </button>
           <p className="text-xs text-navy-100/60">
-            {selected.size === 0
-              ? "Tap the players you believe qualify."
-              : `${selected.size} selected`}
+            {markCount === 0
+              ? "Mark at least one card to submit."
+              : `${markCount} marked · blanks are free (0 points)`}
           </p>
         </div>
       </section>
     );
-  }, [loading, error, puzzle, result, selected, submitting, toggle, handleSubmit, canSubmit]);
+  }, [loading, error, puzzle, result, marks, submitting, cycle, handleSubmit, canSubmit, markCount]);
 
   return (
     <main className="mx-auto flex min-h-screen max-w-md flex-col px-4 pb-10">
@@ -186,13 +220,22 @@ export default function HomePage() {
           <div className="max-w-sm rounded-2xl bg-navy-700 p-5 text-sm shadow-xl">
             <h2 className="mb-2 text-base font-bold">How to play</h2>
             <p className="text-navy-100/90">
-              You see one category and 9 player names. Tap the ones you think
-              really qualify. <span className="font-semibold">A few are imposters</span>
-              {" "}— you won't know how many.
+              One category, nine names. Tap a card to cycle:
             </p>
+            <ul className="mt-2 space-y-1 text-navy-100/90">
+              <li>
+                <span className="font-bold text-emerald-300">YES</span> — you
+                think this name qualifies
+              </li>
+              <li>
+                <span className="font-bold text-red-300">NO</span> — you think
+                it's an imposter
+              </li>
+              <li>Blank — you're not sure (leave it alone)</li>
+            </ul>
             <p className="mt-3 text-navy-100/90">
-              +1 for each correct tap. −1 for each imposter you pick. −1 for
-              each real qualifier you miss.
+              +1 for each right call. −1 for each wrong call. Blanks are free.
+              Max score: 9.
             </p>
             <button
               type="button"

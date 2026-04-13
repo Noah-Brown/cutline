@@ -1,16 +1,16 @@
 "use client";
 
-import type { PuzzlePlayer } from "@/lib/api";
+import type { Mark, PuzzlePlayer } from "@/lib/api";
 import { Card } from "./Card";
 
 type GridProps = {
   players: PuzzlePlayer[];
-  selected: Set<number>;
-  onToggle: (pos: number) => void;
+  marks: Map<number, Mark>;
+  onCycle: (pos: number) => void;
   disabled?: boolean;
 };
 
-export function Grid({ players, selected, onToggle, disabled }: GridProps) {
+export function Grid({ players, marks, onCycle, disabled }: GridProps) {
   const byPos = new Map(players.map((p) => [p.grid_position, p]));
   return (
     <div className="grid grid-cols-3 gap-2 sm:gap-3">
@@ -21,9 +21,9 @@ export function Grid({ players, selected, onToggle, disabled }: GridProps) {
           <Card
             key={pos}
             name={p.name}
-            selected={selected.has(pos)}
+            mark={marks.get(pos) ?? "blank"}
             disabled={disabled}
-            onToggle={() => onToggle(pos)}
+            onCycle={() => onCycle(pos)}
           />
         );
       })}

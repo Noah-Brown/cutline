@@ -1,21 +1,18 @@
 // LocalStorage session and per-puzzle state.
-// Keys per the design spec:
-//   session_id                       — anonymous UUID
-//   puzzle_<date>_submitted          — boolean
-//   puzzle_<date>_selections         — in-progress selections (int[])
-//   puzzle_<date>_results            — cached SubmitResponse
-//   streak_current / streak_max      — maintained by /streak endpoint + locally
+// Keys:
+//   session_id                   — anonymous UUID
+//   puzzle_<date>_submitted      — boolean
+//   puzzle_<date>_marks          — in-progress {yes:[], no:[]} state
+//   puzzle_<date>_results        — cached SubmitResponse
 
-import type { SubmitResponse } from "./api";
+import type { MarksPayload, SubmitResponse } from "./api";
 
 const SESSION_KEY = "session_id";
 
 function uuid(): string {
-  // Prefer the native crypto.randomUUID when available (modern browsers).
   if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
     return crypto.randomUUID();
   }
-  // Fallback — RFC 4122 v4-ish; good enough for anonymous session scoping.
   return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
     const r = (Math.random() * 16) | 0;
     const v = c === "x" ? r : (r & 0x3) | 0x8;
@@ -33,23 +30,28 @@ export function getSessionId(): string {
   return id;
 }
 
-export function loadSelections(date: string): number[] {
-  if (typeof window === "undefined") return [];
-  const raw = window.localStorage.getItem(`puzzle_${date}_selections`);
-  if (!raw) return [];
+const EMPTY_MARKS: MarksPayload = { yes: [], no: [] };
+
+export function loadMarks(date: string): MarksPayload {
+  if (typeof window === "undefined") return { ...EMPTY_MARKS };
+  const raw = window.localStorage.getItem(`puzzle_${date}_marks`);
+  if (!raw) return { ...EMPTY_MARKS };
   try {
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as number[]) : [];
+    const parsed = JSON.parse(raw) as Partial<MarksPayload>;
+    return {
+      yes: Array.isArray(parsed.yes) ? parsed.yes : [],
+      no: Array.isArray(parsed.no) ? parsed.no : [],
+    };
   } catch {
-    return [];
+    return { ...EMPTY_MARKS };
   }
 }
 
-export function saveSelections(date: string, selections: number[]): void {
+export function saveMarks(date: string, marks: MarksPayload): void {
   if (typeof window === "undefined") return;
   window.localStorage.setItem(
-    `puzzle_${date}_selections`,
-    JSON.stringify(selections),
+    `puzzle_${date}_marks`,
+    JSON.stringify(marks),
   );
 }
 

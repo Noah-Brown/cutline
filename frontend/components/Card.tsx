@@ -1,41 +1,60 @@
 "use client";
 
 import { useState } from "react";
-import type { ResultKind } from "@/lib/api";
+import type { Mark, ResultKind } from "@/lib/api";
 
 type Mode = "play" | "reveal";
 
 type CardProps = {
   name: string;
-  selected: boolean;
+  mark?: Mark;            // play mode: current tri-state
   disabled?: boolean;
-  onToggle?: () => void;
+  onCycle?: () => void;   // play mode: advance to next state
   mode?: Mode;
-  result?: ResultKind;
+  result?: ResultKind;    // reveal mode
   explanation?: string;
   revealDelayMs?: number;
 };
 
-function colorsFor(result: ResultKind | undefined): string {
+function revealColors(result: ResultKind | undefined): string {
   switch (result) {
     case "correct":
-      return "bg-emerald-500/25 border-emerald-400 text-emerald-50";
-    case "correct_avoid":
-      return "bg-emerald-500/15 border-emerald-500/40 text-emerald-100/80";
+      return "bg-emerald-500/30 border-emerald-400 text-emerald-50";
+    case "correct_reject":
+      return "bg-emerald-500/30 border-emerald-400 text-emerald-50";
     case "false_positive":
       return "bg-red-500/30 border-red-400 text-red-50";
-    case "missed":
-      return "bg-yellow-400/25 border-yellow-300 text-yellow-50";
+    case "wrong_reject":
+      return "bg-yellow-400/30 border-yellow-300 text-yellow-50";
+    case "unanswered":
+      return "bg-navy-700/50 border-navy-500/50 text-navy-100/80";
     default:
       return "bg-navy-700/60 border-navy-500/60 text-navy-50";
   }
 }
 
+function playColors(mark: Mark | undefined): string {
+  switch (mark) {
+    case "yes":
+      return "bg-emerald-500/70 border-emerald-300 text-emerald-50 animate-pop";
+    case "no":
+      return "bg-red-500/70 border-red-300 text-red-50 animate-pop";
+    default:
+      return "bg-navy-700/70 border-navy-500/50 text-navy-50 hover:border-navy-100/70 hover:bg-navy-700";
+  }
+}
+
+function markBadge(mark: Mark | undefined): string {
+  if (mark === "yes") return "✓";
+  if (mark === "no") return "✕";
+  return "";
+}
+
 export function Card({
   name,
-  selected,
+  mark,
   disabled,
-  onToggle,
+  onCycle,
   mode = "play",
   result,
   explanation,
@@ -43,14 +62,17 @@ export function Card({
 }: CardProps) {
   const [showExplanation, setShowExplanation] = useState(false);
 
+  const baseClasses =
+    "relative flex min-h-[88px] flex-col items-center justify-center rounded-xl border-2 p-2 text-center text-sm font-semibold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-100 sm:min-h-[108px] sm:text-base";
+
   if (mode === "reveal") {
-    const style = colorsFor(result);
+    const style = revealColors(result);
     return (
       <button
         type="button"
         onClick={() => setShowExplanation((v) => !v)}
         style={{ animationDelay: revealDelayMs ? `${revealDelayMs}ms` : undefined }}
-        className={`animate-reveal relative flex min-h-[88px] flex-col items-center justify-center rounded-xl border-2 p-2 text-center text-sm font-semibold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-100 sm:min-h-[108px] sm:text-base ${style}`}
+        className={`animate-reveal ${baseClasses} ${style}`}
         aria-label={`${name}: ${result ?? ""}`}
       >
         <span className="leading-tight">{name}</span>
@@ -63,22 +85,29 @@ export function Card({
     );
   }
 
-  const interactive = !disabled && onToggle;
-  const base =
-    "relative flex min-h-[88px] items-center justify-center rounded-xl border-2 p-2 text-center text-sm font-semibold shadow-sm transition sm:min-h-[108px] sm:text-base";
-  const state = selected
-    ? "bg-navy-100 text-navy-900 border-navy-100 animate-pop"
-    : "bg-navy-700/70 text-navy-50 border-navy-500/50 hover:border-navy-100/70 hover:bg-navy-700";
+  const interactive = !disabled && onCycle;
+  const style = playColors(mark);
   const disabledCls = disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer";
+  const pressedState: "true" | "false" | "mixed" =
+    mark === "yes" ? "true" : mark === "no" ? "false" : "mixed";
 
   return (
     <button
       type="button"
-      aria-pressed={selected}
+      aria-pressed={pressedState}
+      aria-label={`${name} — ${mark ?? "unmarked"}`}
       disabled={!interactive}
-      onClick={onToggle}
-      className={`${base} ${state} ${disabledCls} focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-100`}
+      onClick={onCycle}
+      className={`${baseClasses} ${style} ${disabledCls}`}
     >
+      {mark && mark !== "blank" ? (
+        <span
+          className="absolute right-2 top-2 text-xs font-black"
+          aria-hidden
+        >
+          {markBadge(mark)}
+        </span>
+      ) : null}
       <span className="leading-tight">{name}</span>
     </button>
   );

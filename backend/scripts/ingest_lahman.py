@@ -1,18 +1,14 @@
 """Ingest the Chadwick Bureau (Lahman) baseball database into Cutline's schema.
 
-Expected layout (clone https://github.com/chadwickbureau/baseballdatabank):
-    <path>/People.csv
-    <path>/AwardsPlayers.csv
-    <path>/Batting.csv
-    <path>/Pitching.csv
-    <path>/AllstarFull.csv
-    <path>/Appearances.csv
-
-Usage:
+Supports either a directory of CSVs or a zip archive:
     python -m scripts.ingest_lahman --path /path/to/baseballdatabank/core
+    python -m scripts.ingest_lahman --zip  /path/to/baseballdatabank-YYYY.zip
 
-The ingest is designed to be idempotent: re-running it skips rows already
-loaded via their natural keys.
+Expected filenames (inside a 'core' folder, or anywhere in the zip):
+    People.csv, AwardsPlayers.csv, Batting.csv, Pitching.csv,
+    AllstarFull.csv, Appearances.csv
+
+The ingest is idempotent: natural keys prevent duplicate rows on re-run.
 
 NOTE: Lahman records award *winners* only. To support the imposter-pool
 queries (near-miss candidates), load supplemental voting-result data
@@ -26,8 +22,10 @@ from __future__ import annotations
 import argparse
 import asyncio
 import csv
+import io
+import zipfile
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,9 +59,45 @@ AWARD_NAME_MAP: dict[str, str] = {
 }
 
 
-def _rows(path: Path) -> Iterable[dict]:
-    with path.open(newline="", encoding="utf-8") as f:
-        yield from csv.DictReader(f)
+CsvOpener = Callable[[str], Iterable[dict]]
+
+
+def _rows_from_dir(root: Path) -> CsvOpener:
+    """Return an opener that reads CSVs from a filesystem directory."""
+
+    def _open(name: str) -> Iterable[dict]:
+        path = root / name
+        if not path.exists():
+            # Lahman nests files in a 'core/' subdir depending on the release.
+            alt = root / "core" / name
+            if alt.exists():
+                path = alt
+        with path.open(newline="", encoding="utf-8") as f:
+            yield from csv.DictReader(f)
+
+    return _open
+
+
+def _rows_from_zip(zip_path: Path) -> CsvOpener:
+    """Return an opener that reads CSVs from within a .zip archive."""
+    archive = zipfile.ZipFile(zip_path, "r")
+    # Build a filename → member index; match case-insensitively on basename.
+    index: dict[str, str] = {}
+    for member in archive.namelist():
+        if member.endswith("/"):
+            continue
+        base = member.rsplit("/", 1)[-1]
+        index.setdefault(base.lower(), member)
+
+    def _open(name: str) -> Iterable[dict]:
+        key = name.lower()
+        if key not in index:
+            raise FileNotFoundError(f"{name} not found in {zip_path}")
+        with archive.open(index[key]) as raw:
+            text = io.TextIOWrapper(raw, encoding="utf-8", newline="")
+            yield from csv.DictReader(text)
+
+    return _open
 
 
 def _int(value: str | None) -> int | None:
@@ -75,12 +109,12 @@ def _int(value: str | None) -> int | None:
         return None
 
 
-async def _load_people(session: AsyncSession, src: Path) -> dict[str, int]:
+async def _load_people(session: AsyncSession, opener: CsvOpener) -> dict[str, int]:
     """Load People.csv → players. Returns bbref_id → player_id."""
-    print(f"  people: {src}")
+    print("  people: People.csv")
     id_map: dict[str, int] = {}
     count = 0
-    for row in _rows(src):
+    for row in opener("People.csv"):
         bbref_id = row.get("bbrefID") or row.get("playerID")
         if not bbref_id:
             continue
@@ -121,10 +155,10 @@ async def _load_people(session: AsyncSession, src: Path) -> dict[str, int]:
     return id_map
 
 
-async def _load_awards(session: AsyncSession, src: Path, id_map: dict[str, int]) -> None:
-    print(f"  awards: {src}")
+async def _load_awards(session: AsyncSession, opener: CsvOpener, id_map: dict[str, int]) -> None:
+    print("  awards: AwardsPlayers.csv")
     count = 0
-    for row in _rows(src):
+    for row in opener("AwardsPlayers.csv"):
         player_id = id_map.get(row["playerID"])
         if player_id is None:
             continue
@@ -166,10 +200,10 @@ async def _load_awards(session: AsyncSession, src: Path, id_map: dict[str, int])
     print(f"  awards: {count} inserted")
 
 
-async def _load_allstar(session: AsyncSession, src: Path, id_map: dict[str, int]) -> None:
-    print(f"  all-star: {src}")
+async def _load_allstar(session: AsyncSession, opener: CsvOpener, id_map: dict[str, int]) -> None:
+    print("  all-star: AllstarFull.csv")
     count = 0
-    for row in _rows(src):
+    for row in opener("AllstarFull.csv"):
         player_id = id_map.get(row["playerID"])
         if player_id is None:
             continue
@@ -203,10 +237,10 @@ async def _load_allstar(session: AsyncSession, src: Path, id_map: dict[str, int]
     print(f"  all-star: {count} inserted")
 
 
-async def _load_batting(session: AsyncSession, src: Path, id_map: dict[str, int]) -> None:
-    print(f"  batting: {src}")
+async def _load_batting(session: AsyncSession, opener: CsvOpener, id_map: dict[str, int]) -> None:
+    print("  batting: Batting.csv")
     count = 0
-    for row in _rows(src):
+    for row in opener("Batting.csv"):
         player_id = id_map.get(row["playerID"])
         if player_id is None:
             continue
@@ -264,11 +298,11 @@ async def _load_batting(session: AsyncSession, src: Path, id_map: dict[str, int]
     print(f"  batting: {count} inserted")
 
 
-async def _load_pitching(session: AsyncSession, src: Path, id_map: dict[str, int]) -> None:
+async def _load_pitching(session: AsyncSession, opener: CsvOpener, id_map: dict[str, int]) -> None:
     """Update existing season_stats rows (from batting) with pitching numbers."""
-    print(f"  pitching: {src}")
+    print("  pitching: Pitching.csv")
     updated = 0
-    for row in _rows(src):
+    for row in opener("Pitching.csv"):
         player_id = id_map.get(row["playerID"])
         if player_id is None:
             continue
@@ -309,31 +343,45 @@ async def _load_pitching(session: AsyncSession, src: Path, id_map: dict[str, int
     print(f"  pitching: {updated} updated")
 
 
-async def ingest(path: Path) -> None:
+async def ingest(opener: CsvOpener) -> None:
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
 
     async with SessionLocal() as session:
-        id_map = await _load_people(session, path / "People.csv")
-        await _load_awards(session, path / "AwardsPlayers.csv", id_map)
-        await _load_allstar(session, path / "AllstarFull.csv", id_map)
-        await _load_batting(session, path / "Batting.csv", id_map)
-        await _load_pitching(session, path / "Pitching.csv", id_map)
+        id_map = await _load_people(session, opener)
+        await _load_awards(session, opener, id_map)
+        await _load_allstar(session, opener, id_map)
+        await _load_batting(session, opener, id_map)
+        await _load_pitching(session, opener, id_map)
     print("Ingest complete.")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description="Ingest Lahman CSVs into Cutline.")
-    parser.add_argument(
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument(
         "--path",
         type=Path,
-        required=True,
-        help="Path to the baseballdatabank/core directory",
+        help="Path to the baseballdatabank directory (CSVs or a 'core/' subdir)",
+    )
+    group.add_argument(
+        "--zip",
+        dest="zip_path",
+        type=Path,
+        help="Path to a baseballdatabank .zip archive",
     )
     args = parser.parse_args()
-    if not args.path.is_dir():
-        raise SystemExit(f"Not a directory: {args.path}")
-    asyncio.run(ingest(args.path))
+
+    if args.path is not None:
+        if not args.path.is_dir():
+            raise SystemExit(f"Not a directory: {args.path}")
+        opener = _rows_from_dir(args.path)
+    else:
+        if not args.zip_path.is_file():
+            raise SystemExit(f"Not a file: {args.zip_path}")
+        opener = _rows_from_zip(args.zip_path)
+
+    asyncio.run(ingest(opener))
 
 
 if __name__ == "__main__":

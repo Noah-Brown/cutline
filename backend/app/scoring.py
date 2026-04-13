@@ -1,12 +1,19 @@
-"""Scoring engine and share-grid generation.
+"""Scoring engine and share-grid generation — tri-state marks.
 
-Scoring rules (per design spec):
-  +1 for each qualifier the player tapped (correct selection)
-  -1 for each imposter the player tapped (false positive)
-  -1 for each qualifier the player did NOT tap (missed qualifier)
-   0 for each imposter the player correctly avoided
+Each card gets one of three marks:
+  • YES   — the player thinks this name qualifies
+  • NO    — the player thinks this name is an imposter
+  • BLANK — the player is unsure / left it alone
 
-max_score == number of qualifiers in the puzzle.
+Scoring:
+  YES on qualifier  → +1 (CORRECT)
+  YES on imposter   → -1 (FALSE_POSITIVE)
+  NO  on imposter   → +1 (CORRECT_REJECT)
+  NO  on qualifier  → -1 (WRONG_REJECT)
+  BLANK on either   →  0 (UNANSWERED)
+
+max_score is always 9 (one point per correct confident answer).
+Minimum possible is -9.
 """
 
 from __future__ import annotations
@@ -15,18 +22,25 @@ from dataclasses import dataclass
 from enum import Enum
 
 
+class Mark(str, Enum):
+    YES = "yes"
+    NO = "no"
+    BLANK = "blank"
+
+
 class ResultKind(str, Enum):
-    CORRECT = "correct"                # qualifier tapped
-    FALSE_POSITIVE = "false_positive"  # imposter tapped
-    MISSED = "missed"                  # qualifier not tapped
-    CORRECT_AVOID = "correct_avoid"    # imposter not tapped
+    CORRECT = "correct"                 # YES on qualifier
+    FALSE_POSITIVE = "false_positive"   # YES on imposter
+    CORRECT_REJECT = "correct_reject"   # NO on imposter
+    WRONG_REJECT = "wrong_reject"       # NO on qualifier
+    UNANSWERED = "unanswered"           # BLANK
 
 
 @dataclass(frozen=True)
 class EntryOutcome:
     grid_position: int
     is_qualifier: bool
-    was_selected: bool
+    mark: Mark
     result: ResultKind
 
 
@@ -38,65 +52,62 @@ class ScoreResult:
     outcomes: list[EntryOutcome]
 
 
-def classify(is_qualifier: bool, was_selected: bool) -> ResultKind:
-    if is_qualifier and was_selected:
-        return ResultKind.CORRECT
-    if is_qualifier and not was_selected:
-        return ResultKind.MISSED
-    if (not is_qualifier) and was_selected:
-        return ResultKind.FALSE_POSITIVE
-    return ResultKind.CORRECT_AVOID
+def classify(is_qualifier: bool, mark: Mark) -> ResultKind:
+    if mark is Mark.YES:
+        return ResultKind.CORRECT if is_qualifier else ResultKind.FALSE_POSITIVE
+    if mark is Mark.NO:
+        return ResultKind.WRONG_REJECT if is_qualifier else ResultKind.CORRECT_REJECT
+    return ResultKind.UNANSWERED
+
+
+_POINTS: dict[ResultKind, int] = {
+    ResultKind.CORRECT: 1,
+    ResultKind.CORRECT_REJECT: 1,
+    ResultKind.FALSE_POSITIVE: -1,
+    ResultKind.WRONG_REJECT: -1,
+    ResultKind.UNANSWERED: 0,
+}
 
 
 def score_submission(
     entries: list[tuple[int, bool]],  # (grid_position, is_qualifier)
-    selections: set[int],
+    marks: dict[int, Mark],           # grid_position → mark (missing = BLANK)
 ) -> ScoreResult:
-    """Compute the score and per-entry outcomes.
-
-    Args:
-        entries: Iterable of (grid_position, is_qualifier) for all 9 grid slots.
-        selections: Set of grid_positions the player tapped.
-    """
+    """Compute the score and per-entry outcomes under tri-state rules."""
     outcomes: list[EntryOutcome] = []
     score = 0
-    max_score = 0
 
     for grid_position, is_qualifier in entries:
-        was_selected = grid_position in selections
-        kind = classify(is_qualifier, was_selected)
-
-        if is_qualifier:
-            max_score += 1
-
-        if kind is ResultKind.CORRECT:
-            score += 1
-        elif kind is ResultKind.FALSE_POSITIVE:
-            score -= 1
-        elif kind is ResultKind.MISSED:
-            score -= 1
-
+        mark = marks.get(grid_position, Mark.BLANK)
+        kind = classify(is_qualifier, mark)
+        score += _POINTS[kind]
         outcomes.append(
             EntryOutcome(
                 grid_position=grid_position,
                 is_qualifier=is_qualifier,
-                was_selected=was_selected,
+                mark=mark,
                 result=kind,
             )
         )
 
     outcomes.sort(key=lambda o: o.grid_position)
-    perfect = score == max_score
-    return ScoreResult(score=score, max_score=max_score, perfect=perfect, outcomes=outcomes)
+    max_score = len(entries)  # 9
+    return ScoreResult(
+        score=score,
+        max_score=max_score,
+        perfect=score == max_score,
+        outcomes=outcomes,
+    )
 
 
 # --- Share-grid rendering -------------------------------------------------
 
-_EMOJI = {
+_EMOJI: dict[ResultKind, str] = {
     ResultKind.CORRECT: "🟩",
-    ResultKind.CORRECT_AVOID: "🟩",  # green: you got it right (avoided imposter)
-    ResultKind.FALSE_POSITIVE: "🔴",  # red: you selected an imposter
-    ResultKind.MISSED: "🟨",          # yellow: you missed a qualifier
+    ResultKind.CORRECT_REJECT: "🟩",    # you correctly identified an imposter
+    ResultKind.FALSE_POSITIVE: "🔴",     # picked an imposter as a qualifier
+    ResultKind.WRONG_REJECT: "🟨",       # rejected a real qualifier
+    ResultKind.UNANSWERED: "⬜",         # left blank
 }
 
 

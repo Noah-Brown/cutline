@@ -1,9 +1,10 @@
-"""Unit tests for the scoring engine and share-grid renderer."""
+"""Unit tests for the tri-state scoring engine and share-grid renderer."""
 
 from __future__ import annotations
 
 from app.scoring import (
     EntryOutcome,
+    Mark,
     ResultKind,
     render_share_grid,
     render_share_text,
@@ -11,7 +12,7 @@ from app.scoring import (
 )
 
 
-# A small sample grid: 6 qualifiers + 3 imposters (matches the seed puzzle shape).
+# 6 qualifiers + 3 imposters (matches the seed puzzle shape).
 SAMPLE_ENTRIES: list[tuple[int, bool]] = [
     (0, True),   # Bonds
     (1, True),   # Pujols
@@ -24,85 +25,108 @@ SAMPLE_ENTRIES: list[tuple[int, bool]] = [
     (8, True),   # Acuña
 ]
 
-QUALIFIER_POSITIONS = {0, 1, 3, 4, 6, 8}
-IMPOSTER_POSITIONS = {2, 5, 7}
+QUALIFIERS = {0, 1, 3, 4, 6, 8}
+IMPOSTERS = {2, 5, 7}
 
 
-def test_perfect_score_hits_all_qualifiers_only() -> None:
-    result = score_submission(SAMPLE_ENTRIES, QUALIFIER_POSITIONS)
-    assert result.score == 6
-    assert result.max_score == 6
+def _marks(*, yes: set[int] = frozenset(), no: set[int] = frozenset()) -> dict[int, Mark]:
+    m: dict[int, Mark] = {}
+    for p in yes:
+        m[p] = Mark.YES
+    for p in no:
+        m[p] = Mark.NO
+    return m
+
+
+def test_all_blanks_scores_zero() -> None:
+    result = score_submission(SAMPLE_ENTRIES, {})
+    assert result.score == 0
+    assert result.max_score == 9
+    assert all(o.result is ResultKind.UNANSWERED for o in result.outcomes)
+
+
+def test_perfect_requires_yes_on_qualifiers_and_no_on_imposters() -> None:
+    marks = _marks(yes=QUALIFIERS, no=IMPOSTERS)
+    result = score_submission(SAMPLE_ENTRIES, marks)
+    assert result.score == 9
+    assert result.max_score == 9
     assert result.perfect is True
-    for o in result.outcomes:
-        if o.is_qualifier:
-            assert o.result is ResultKind.CORRECT
-        else:
-            assert o.result is ResultKind.CORRECT_AVOID
+    kinds = {o.result for o in result.outcomes}
+    assert kinds == {ResultKind.CORRECT, ResultKind.CORRECT_REJECT}
 
 
-def test_worst_case_all_imposters_no_qualifiers() -> None:
-    result = score_submission(SAMPLE_ENTRIES, IMPOSTER_POSITIONS)
-    # 3 false positives (-3) + 6 missed qualifiers (-6) = -9
+def test_worst_case_inverted_scores_minus_nine() -> None:
+    # YES on every imposter, NO on every qualifier
+    marks = _marks(yes=IMPOSTERS, no=QUALIFIERS)
+    result = score_submission(SAMPLE_ENTRIES, marks)
     assert result.score == -9
-    assert result.max_score == 6
+
+
+def test_yes_on_qualifier_only_ignoring_imposters() -> None:
+    # Classic cautious play: say yes to the 6 qualifiers, leave imposters blank
+    marks = _marks(yes=QUALIFIERS)
+    result = score_submission(SAMPLE_ENTRIES, marks)
+    assert result.score == 6
     assert result.perfect is False
 
 
-def test_mixed_submission_scoring() -> None:
-    # Select 5 qualifiers + 1 imposter, miss 1 qualifier
-    selections = {0, 1, 3, 4, 6, 2}  # 5 correct + 1 FP; pos 8 missed
-    result = score_submission(SAMPLE_ENTRIES, selections)
-    # +5 correct, -1 FP, -1 missed = 3
+def test_no_on_imposters_only() -> None:
+    # Just identify imposters, don't commit on anything else
+    marks = _marks(no=IMPOSTERS)
+    result = score_submission(SAMPLE_ENTRIES, marks)
     assert result.score == 3
-    assert result.max_score == 6
-    assert result.perfect is False
-
-    kinds_by_pos = {o.grid_position: o.result for o in result.outcomes}
-    assert kinds_by_pos[0] is ResultKind.CORRECT
-    assert kinds_by_pos[2] is ResultKind.FALSE_POSITIVE
-    assert kinds_by_pos[8] is ResultKind.MISSED
-    assert kinds_by_pos[5] is ResultKind.CORRECT_AVOID
 
 
-def test_no_selections_scores_minus_qualifiers() -> None:
-    result = score_submission(SAMPLE_ENTRIES, set())
-    assert result.score == -6
-    assert result.max_score == 6
+def test_mixed_marks() -> None:
+    # YES on 4 qualifiers (+4), NO on 1 imposter (+1), YES on 1 imposter (-1),
+    # NO on 1 qualifier (-1), leave 2 blank (0)
+    marks: dict[int, Mark] = {
+        0: Mark.YES,   # qualifier → +1
+        1: Mark.YES,   # qualifier → +1
+        3: Mark.YES,   # qualifier → +1
+        4: Mark.YES,   # qualifier → +1
+        2: Mark.NO,    # imposter  → +1
+        5: Mark.YES,   # imposter  → -1 (false positive)
+        6: Mark.NO,    # qualifier → -1 (wrong reject)
+        # positions 7, 8 blank → 0
+    }
+    # +4 (correct yes) +1 (correct no) -1 (FP) -1 (wrong reject) = 3
+    result = score_submission(SAMPLE_ENTRIES, marks)
+    assert result.score == 3
+    assert result.max_score == 9
+
+    kinds = {o.grid_position: o.result for o in result.outcomes}
+    assert kinds[0] is ResultKind.CORRECT
+    assert kinds[2] is ResultKind.CORRECT_REJECT
+    assert kinds[5] is ResultKind.FALSE_POSITIVE
+    assert kinds[6] is ResultKind.WRONG_REJECT
+    assert kinds[7] is ResultKind.UNANSWERED
+    assert kinds[8] is ResultKind.UNANSWERED
 
 
-def test_share_grid_shape_and_symbols() -> None:
+def test_share_grid_emojis_cover_all_kinds() -> None:
     outcomes = [
-        EntryOutcome(grid_position=i, is_qualifier=True, was_selected=True, result=ResultKind.CORRECT)
-        for i in range(9)
+        EntryOutcome(0, True,  Mark.YES,   ResultKind.CORRECT),
+        EntryOutcome(1, False, Mark.NO,    ResultKind.CORRECT_REJECT),
+        EntryOutcome(2, False, Mark.YES,   ResultKind.FALSE_POSITIVE),
+        EntryOutcome(3, True,  Mark.NO,    ResultKind.WRONG_REJECT),
+        EntryOutcome(4, True,  Mark.BLANK, ResultKind.UNANSWERED),
+        EntryOutcome(5, False, Mark.BLANK, ResultKind.UNANSWERED),
+        EntryOutcome(6, True,  Mark.YES,   ResultKind.CORRECT),
+        EntryOutcome(7, False, Mark.NO,    ResultKind.CORRECT_REJECT),
+        EntryOutcome(8, True,  Mark.YES,   ResultKind.CORRECT),
     ]
     grid = render_share_grid(outcomes)
-    assert grid.count("\n") == 2  # three rows
-    assert grid.replace("\n", "") == "🟩" * 9
-
-
-def test_share_grid_mixed_symbols() -> None:
-    # Ordering matches spec's sample share:
-    #   🟩🟩🟩
-    #   🟩🔴🟩
-    #   🟩🟩🟨
-    outcomes = [
-        EntryOutcome(0, True, True, ResultKind.CORRECT),
-        EntryOutcome(1, True, True, ResultKind.CORRECT),
-        EntryOutcome(2, True, True, ResultKind.CORRECT),
-        EntryOutcome(3, True, True, ResultKind.CORRECT),
-        EntryOutcome(4, False, True, ResultKind.FALSE_POSITIVE),
-        EntryOutcome(5, True, True, ResultKind.CORRECT),
-        EntryOutcome(6, True, True, ResultKind.CORRECT),
-        EntryOutcome(7, True, True, ResultKind.CORRECT),
-        EntryOutcome(8, True, False, ResultKind.MISSED),
+    assert grid.splitlines() == [
+        "🟩🟩🔴",
+        "🟨⬜⬜",
+        "🟩🟩🟩",
     ]
-    grid = render_share_grid(outcomes)
-    assert grid.splitlines() == ["🟩🟩🟩", "🟩🔴🟩", "🟩🟩🟨"]
 
 
 def test_share_text_format() -> None:
     outcomes = [
-        EntryOutcome(i, True, True, ResultKind.CORRECT) for i in range(9)
+        EntryOutcome(i, True, Mark.YES, ResultKind.CORRECT) for i in range(9)
     ]
     text = render_share_text(
         game_name="Cutline",

@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { PlayerResult, SubmitResponse } from "@/lib/api";
+import type { PlayerResult, ResultKind, SubmitResponse } from "@/lib/api";
 import { Card } from "./Card";
 import { ShareButton } from "./ShareButton";
 import { Stats } from "./Stats";
@@ -11,6 +11,35 @@ type RevealProps = {
   response: SubmitResponse;
   category: string;
 };
+
+function emojiFor(result: ResultKind): string {
+  switch (result) {
+    case "correct":
+    case "correct_reject":
+      return "🟩";
+    case "false_positive":
+      return "🔴";
+    case "wrong_reject":
+      return "🟨";
+    case "unanswered":
+      return "⬜";
+  }
+}
+
+function labelFor(result: ResultKind): string {
+  switch (result) {
+    case "correct":
+      return "Correct (yes)";
+    case "correct_reject":
+      return "Correct (imposter spotted)";
+    case "false_positive":
+      return "Missed — imposter";
+    case "wrong_reject":
+      return "Missed — real qualifier";
+    case "unanswered":
+      return "Unanswered";
+  }
+}
 
 export function Reveal({ response, category }: RevealProps) {
   const { score, max_score, perfect, results, share_text } = response;
@@ -55,7 +84,6 @@ export function Reveal({ response, category }: RevealProps) {
               key={pos}
               mode="reveal"
               name={r.name}
-              selected={r.was_selected}
               result={r.result}
               explanation={r.explanation}
               revealDelayMs={pos * 90}
@@ -101,7 +129,12 @@ export function Reveal({ response, category }: RevealProps) {
                 {emojiFor(r.result)}
               </span>
               <div>
-                <p className="font-semibold">{r.name}</p>
+                <p className="font-semibold">
+                  {r.name}{" "}
+                  <span className="text-xs font-normal text-navy-100/60">
+                    · {labelFor(r.result)}
+                  </span>
+                </p>
                 <p className="text-navy-100/70">{r.explanation}</p>
               </div>
             </li>
@@ -110,16 +143,4 @@ export function Reveal({ response, category }: RevealProps) {
       </details>
     </section>
   );
-}
-
-function emojiFor(result: PlayerResult["result"]): string {
-  switch (result) {
-    case "correct":
-    case "correct_avoid":
-      return "🟩";
-    case "false_positive":
-      return "🔴";
-    case "missed":
-      return "🟨";
-  }
 }

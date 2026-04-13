@@ -1,4 +1,4 @@
-"""End-to-end HTTP tests for the puzzle + admin API."""
+"""End-to-end HTTP tests for the puzzle + admin API (tri-state scoring)."""
 
 from __future__ import annotations
 
@@ -11,8 +11,7 @@ pytestmark = pytest.mark.asyncio
 async def test_health(client):
     r = await client.get("/health")
     assert r.status_code == 200
-    body = r.json()
-    assert body["status"] == "ok"
+    assert r.json()["status"] == "ok"
 
 
 async def test_get_today_returns_puzzle(client, seeded_puzzle):
@@ -33,43 +32,67 @@ async def test_submit_perfect_score(client, seeded_puzzle):
         json={
             "puzzle_id": seeded_puzzle["puzzle_id"],
             "session_id": "sess-perfect",
-            "selections": sorted(seeded_puzzle["qualifier_positions"]),
+            "marks": {
+                "yes": sorted(seeded_puzzle["qualifier_positions"]),
+                "no": sorted(seeded_puzzle["imposter_positions"]),
+            },
         },
     )
     assert r.status_code == 200
     body = r.json()
-    assert body["score"] == 6
-    assert body["max_score"] == 6
+    assert body["score"] == 9
+    assert body["max_score"] == 9
     assert body["perfect"] is True
     assert len(body["results"]) == 9
-    assert "Score: 6/6" in body["share_text"]
+    assert "Score: 9/9" in body["share_text"]
     assert "Cutline" in body["share_text"]
 
 
 async def test_submit_mixed_scoring(client, seeded_puzzle):
-    # 4 correct + 1 FP + 2 missed
-    selections = [0, 1, 3, 4, 2]  # 4 qualifiers + 1 imposter
+    # YES on 4 qualifiers + 1 imposter; NO on 1 qualifier; others blank
     r = await client.post(
         "/api/puzzle/submit",
         json={
             "puzzle_id": seeded_puzzle["puzzle_id"],
             "session_id": "sess-mix",
-            "selections": selections,
+            "marks": {"yes": [0, 1, 3, 4, 2], "no": [8]},
         },
     )
     assert r.status_code == 200
     body = r.json()
-    # +4 correct - 1 FP - 2 missed (6 qualifiers, 4 selected) = +1
-    assert body["score"] == 1
-    assert body["max_score"] == 6
+    # +4 correct, -1 FP (imposter said yes), -1 wrong reject (qual said no) = +2
+    assert body["score"] == 2
+    assert body["max_score"] == 9
     assert body["perfect"] is False
+
+    # Sanity: confirm the per-entry result kinds
+    kinds = {r["grid_position"]: r["result"] for r in body["results"]}
+    assert kinds[0] == "correct"
+    assert kinds[2] == "false_positive"
+    assert kinds[8] == "wrong_reject"
+    assert kinds[5] == "unanswered"
+
+
+async def test_submit_blank_scores_zero(client, seeded_puzzle):
+    r = await client.post(
+        "/api/puzzle/submit",
+        json={
+            "puzzle_id": seeded_puzzle["puzzle_id"],
+            "session_id": "sess-blank",
+            "marks": {"yes": [], "no": []},
+        },
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["score"] == 0
+    assert body["max_score"] == 9
 
 
 async def test_submit_duplicate_rejected(client, seeded_puzzle):
     payload = {
         "puzzle_id": seeded_puzzle["puzzle_id"],
         "session_id": "sess-dup",
-        "selections": [0],
+        "marks": {"yes": [0], "no": []},
     }
     r1 = await client.post("/api/puzzle/submit", json=payload)
     assert r1.status_code == 200
@@ -83,7 +106,19 @@ async def test_submit_rejects_invalid_positions(client, seeded_puzzle):
         json={
             "puzzle_id": seeded_puzzle["puzzle_id"],
             "session_id": "sess-bad",
-            "selections": [0, 42],
+            "marks": {"yes": [0, 42], "no": []},
+        },
+    )
+    assert r.status_code == 422
+
+
+async def test_submit_rejects_yes_and_no_overlap(client, seeded_puzzle):
+    r = await client.post(
+        "/api/puzzle/submit",
+        json={
+            "puzzle_id": seeded_puzzle["puzzle_id"],
+            "session_id": "sess-overlap",
+            "marks": {"yes": [0, 1], "no": [1, 2]},
         },
     )
     assert r.status_code == 422
@@ -107,7 +142,10 @@ async def test_stats_after_submission(client, seeded_puzzle):
         json={
             "puzzle_id": seeded_puzzle["puzzle_id"],
             "session_id": "stats-sess",
-            "selections": sorted(seeded_puzzle["qualifier_positions"]),
+            "marks": {
+                "yes": sorted(seeded_puzzle["qualifier_positions"]),
+                "no": sorted(seeded_puzzle["imposter_positions"]),
+            },
         },
     )
     r = await client.get(f"/api/puzzle/stats?puzzle_id={seeded_puzzle['puzzle_id']}")
@@ -137,11 +175,11 @@ async def test_streak_with_single_play(client, seeded_puzzle):
         json={
             "puzzle_id": seeded_puzzle["puzzle_id"],
             "session_id": "streaker",
-            "selections": [0],
+            "marks": {"yes": [0], "no": []},
         },
     )
     r = await client.get("/api/puzzle/streak?session_id=streaker")
     assert r.status_code == 200
     body = r.json()
     assert body["longest_streak"] == 1
-    assert body["current_streak"] in (0, 1)  # depends on today's date vs puzzle_date
+    assert body["current_streak"] in (0, 1)
