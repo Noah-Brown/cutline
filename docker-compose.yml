@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cutline-postgres
+    environment:
+      POSTGRES_USER: cutline
+      POSTGRES_PASSWORD: cutline
+      POSTGRES_DB: cutline
+    ports:
+      - "5432:5432"
+    volumes:
+      - cutline-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cutline -d cutline"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  cutline-pgdata:
