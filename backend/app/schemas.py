@@ -15,6 +15,7 @@ class PuzzlePlayer(BaseModel):
     grid_position: int = Field(ge=0, le=8)
     name: str
     player_id: int
+    photo_url: str | None = None
 
 
 class PuzzleResponse(BaseModel):
@@ -69,6 +70,7 @@ class PlayerResult(BaseModel):
     grid_position: int
     player_id: int
     name: str
+    photo_url: str | None = None
     is_qualifier: bool
     mark: MarkLiteral
     result: ResultLiteral
@@ -144,6 +146,18 @@ class PlayerSearchHit(BaseModel):
     debut_year: int | None
     final_year: int | None
     primary_position: str | None
+    photo_url: str | None = None
+
+
+class PlayerUpdate(BaseModel):
+    """Partial update of a player — MVP surface is just photo_url."""
+
+    photo_url: str | None = Field(default=None, max_length=500)
+
+
+class PhotoUploadResponse(BaseModel):
+    player_id: int
+    photo_url: str
 
 
 class QualifierPoolResponse(BaseModel):

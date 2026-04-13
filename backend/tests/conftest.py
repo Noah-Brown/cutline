@@ -12,6 +12,7 @@ os.environ.setdefault(
 import asyncio
 from collections.abc import AsyncIterator
 from datetime import date
+from pathlib import Path
 
 import pytest
 import pytest_asyncio
@@ -21,6 +22,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_asyn
 from app.database import Base, get_session
 from app.main import create_app
 from app.models import Award, Player, Puzzle, PuzzleEntry
+from app.routers.admin import get_photo_dir
 
 
 TEST_DB_URL = os.environ["DATABASE_URL"]
@@ -111,14 +113,24 @@ async def seeded_puzzle(session_factory) -> dict:
 
 
 @pytest_asyncio.fixture
-async def client(engine, session_factory) -> AsyncIterator[AsyncClient]:
+async def photo_dir(tmp_path_factory) -> Path:
+    d = tmp_path_factory.mktemp("photos")
+    return d
+
+
+@pytest_asyncio.fixture
+async def client(engine, session_factory, photo_dir) -> AsyncIterator[AsyncClient]:
     app = create_app()
 
     async def override_get_session():
         async with session_factory() as session:
             yield session
 
+    def override_photo_dir() -> Path:
+        return photo_dir
+
     app.dependency_overrides[get_session] = override_get_session
+    app.dependency_overrides[get_photo_dir] = override_photo_dir
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
         yield ac

@@ -84,6 +84,7 @@ export function Reveal({ response, category }: RevealProps) {
               key={pos}
               mode="reveal"
               name={r.name}
+              photoUrl={r.photo_url}
               result={r.result}
               explanation={r.explanation}
               revealDelayMs={pos * 90}

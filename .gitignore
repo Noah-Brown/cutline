@@ -35,6 +35,9 @@ data/*.csv
 *.sqlite
 *.db
 
+# Uploaded player photos (local dev only; production uses object storage)
+backend/uploads/
+
 # IDE
 .vscode/
 .idea/

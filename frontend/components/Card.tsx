@@ -1,12 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import type { Mark, ResultKind } from "@/lib/api";
+import { resolvePhotoUrl, type Mark, type ResultKind } from "@/lib/api";
 
 type Mode = "play" | "reveal";
 
 type CardProps = {
   name: string;
+  photoUrl?: string | null;
   mark?: Mark;            // play mode: current tri-state
   disabled?: boolean;
   onCycle?: () => void;   // play mode: advance to next state
@@ -19,7 +20,6 @@ type CardProps = {
 function revealColors(result: ResultKind | undefined): string {
   switch (result) {
     case "correct":
-      return "bg-emerald-500/30 border-emerald-400 text-emerald-50";
     case "correct_reject":
       return "bg-emerald-500/30 border-emerald-400 text-emerald-50";
     case "false_positive":
@@ -50,8 +50,48 @@ function markBadge(mark: Mark | undefined): string {
   return "";
 }
 
+function initialsFor(name: string): string {
+  const parts = name.split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return "?";
+  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+}
+
+function PlayerAvatar({
+  name,
+  photoUrl,
+}: {
+  name: string;
+  photoUrl: string | null | undefined;
+}) {
+  const [errored, setErrored] = useState(false);
+  const resolved = resolvePhotoUrl(photoUrl);
+
+  if (resolved && !errored) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={resolved}
+        alt=""
+        onError={() => setErrored(true)}
+        className="h-10 w-10 rounded-full object-cover ring-1 ring-navy-100/30 sm:h-12 sm:w-12"
+      />
+    );
+  }
+
+  return (
+    <div
+      aria-hidden
+      className="flex h-10 w-10 items-center justify-center rounded-full bg-navy-900/60 text-[11px] font-bold uppercase tracking-wider text-navy-100/80 ring-1 ring-navy-100/20 sm:h-12 sm:w-12 sm:text-xs"
+    >
+      {initialsFor(name)}
+    </div>
+  );
+}
+
 export function Card({
   name,
+  photoUrl,
   mark,
   disabled,
   onCycle,
@@ -63,7 +103,7 @@ export function Card({
   const [showExplanation, setShowExplanation] = useState(false);
 
   const baseClasses =
-    "relative flex min-h-[88px] flex-col items-center justify-center rounded-xl border-2 p-2 text-center text-sm font-semibold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-100 sm:min-h-[108px] sm:text-base";
+    "relative flex min-h-[108px] flex-col items-center justify-center gap-1 rounded-xl border-2 p-2 text-center text-xs font-semibold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-100 sm:min-h-[128px] sm:text-sm";
 
   if (mode === "reveal") {
     const style = revealColors(result);
@@ -75,6 +115,7 @@ export function Card({
         className={`animate-reveal ${baseClasses} ${style}`}
         aria-label={`${name}: ${result ?? ""}`}
       >
+        <PlayerAvatar name={name} photoUrl={photoUrl} />
         <span className="leading-tight">{name}</span>
         {showExplanation && explanation ? (
           <span className="mt-1 text-[11px] font-normal leading-snug text-navy-50/90 sm:text-xs">
@@ -108,6 +149,7 @@ export function Card({
           {markBadge(mark)}
         </span>
       ) : null}
+      <PlayerAvatar name={name} photoUrl={photoUrl} />
       <span className="leading-tight">{name}</span>
     </button>
   );

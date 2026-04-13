@@ -2,6 +2,7 @@ export type PuzzlePlayer = {
   grid_position: number;
   name: string;
   player_id: number;
+  photo_url: string | null;
 };
 
 export type PuzzleResponse = {
@@ -25,6 +26,7 @@ export type PlayerResult = {
   grid_position: number;
   player_id: number;
   name: string;
+  photo_url: string | null;
   is_qualifier: boolean;
   mark: Mark;
   result: ResultKind;
@@ -42,6 +44,13 @@ export type SubmitResponse = {
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE ?? "http://localhost:8000";
+
+/** Resolve a possibly-relative photo URL against the API base. */
+export function resolvePhotoUrl(photoUrl: string | null | undefined): string | null {
+  if (!photoUrl) return null;
+  if (/^https?:\/\//i.test(photoUrl)) return photoUrl;
+  return `${API_BASE}${photoUrl.startsWith("/") ? "" : "/"}${photoUrl}`;
+}
 
 async function handle<T>(res: Response): Promise<T> {
   if (!res.ok) {

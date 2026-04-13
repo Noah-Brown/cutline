@@ -37,6 +37,7 @@ class Player(Base):
     final_year: Mapped[int | None] = mapped_column(Integer)
     primary_position: Mapped[str | None] = mapped_column(String(10))
     is_active: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    photo_url: Mapped[str | None] = mapped_column(String(500))
 
     awards: Mapped[list["Award"]] = relationship(back_populates="player", cascade="all, delete-orphan")
     seasons: Mapped[list["SeasonStat"]] = relationship(back_populates="player", cascade="all, delete-orphan")

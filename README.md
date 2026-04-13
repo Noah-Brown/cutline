@@ -107,10 +107,35 @@ needed — see `backend/app/categories.py` for the hooks.
 | GET    | `/api/puzzle/stats`           | Aggregate completion + average score         |
 | GET    | `/api/puzzle/{date}`          | Archive access (past puzzles)                |
 | GET    | `/api/puzzle/streak`          | Player's current streak data                 |
-| POST   | `/api/admin/puzzle`           | Create/schedule a puzzle                     |
-| GET    | `/api/admin/puzzle/preview`   | Preview a puzzle before publishing           |
-| GET    | `/api/admin/categories`       | List registered category types               |
-| GET    | `/api/admin/players/search`   | Search players for puzzle building           |
+| POST   | `/api/admin/puzzle`                    | Create/schedule a puzzle                    |
+| GET    | `/api/admin/puzzle/preview`            | Preview a puzzle before publishing          |
+| GET    | `/api/admin/categories`                | List registered category types              |
+| GET    | `/api/admin/players/search`            | Search players for puzzle building          |
+| PATCH  | `/api/admin/players/{id}`              | Update a player (currently just `photo_url`) |
+| POST   | `/api/admin/players/{id}/photo`        | Upload a headshot (multipart; JPEG/PNG/WebP) |
+
+## Player photos (manual)
+
+Players can have an optional headshot. There are two ways to attach one via
+the admin API:
+
+```bash
+# 1. Upload a file (persisted under backend/uploads/photos/<player_id>.<ext>)
+curl -X POST http://localhost:8000/api/admin/players/42/photo \
+  -H "Authorization: Bearer dev-admin-token" \
+  -F file=@headshot.png
+
+# 2. Or paste an external URL (e.g. Wikimedia Commons)
+curl -X PATCH http://localhost:8000/api/admin/players/42 \
+  -H "Authorization: Bearer dev-admin-token" \
+  -H "Content-Type: application/json" \
+  -d '{"photo_url":"https://upload.wikimedia.org/.../Barry_Bonds_2007.jpg"}'
+```
+
+Uploaded files are served from `/photos/<id>.<ext>`. The frontend resolves
+relative paths against the API base and falls back to an initials circle
+when a photo is missing or fails to load. Accepted types: JPEG, PNG, WebP.
+Max size: 5 MB (configurable via `PHOTO_MAX_BYTES`).
 
 ## Tests
 

@@ -71,6 +71,7 @@ def _to_puzzle_response(puzzle: Puzzle, puzzle_number: int) -> PuzzleResponse:
                 grid_position=e.grid_position,
                 name=e.player.name_display,
                 player_id=e.player_id,
+                photo_url=e.player.photo_url,
             )
             for e in puzzle.entries
         ],
@@ -244,6 +245,7 @@ async def submit(
                 grid_position=outcome.grid_position,
                 player_id=entry.player_id,
                 name=entry.player.name_display,
+                photo_url=entry.player.photo_url,
                 is_qualifier=entry.is_qualifier,
                 mark=outcome.mark.value,
                 result=outcome.result.value,

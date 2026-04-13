@@ -23,6 +23,13 @@ class Settings(BaseSettings):
     admin_token: str = "dev-admin-token"
     game_name: str = "Cutline"
 
+    # Player-photo storage (manual upload via admin API).
+    # photo_upload_dir: filesystem directory where uploads are persisted.
+    # photo_url_prefix: URL path that serves them (mounted via StaticFiles).
+    photo_upload_dir: str = "./uploads/photos"
+    photo_url_prefix: str = "/photos"
+    photo_max_bytes: int = 5 * 1024 * 1024  # 5 MB
+
 
 @lru_cache
 def get_settings() -> Settings:

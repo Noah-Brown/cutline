@@ -6,7 +6,9 @@ with real auth when user accounts land.
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
+from pathlib import Path
+
+from fastapi import APIRouter, Depends, File, Header, HTTPException, Query, UploadFile, status
 from sqlalchemy import or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
@@ -18,11 +20,43 @@ from app.models import Player, Puzzle, PuzzleEntry
 from app.schemas import (
     CategoryInfo,
     CreatePuzzleRequest,
+    PhotoUploadResponse,
     PlayerSearchHit,
+    PlayerUpdate,
     PuzzlePlayer,
     PuzzleResponse,
     QualifierPoolResponse,
 )
+
+
+# --- Photo storage helpers ----------------------------------------------
+
+_ALLOWED_CONTENT_TYPES: dict[str, str] = {
+    "image/jpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}
+
+
+def get_photo_dir() -> Path:
+    """Dependency: filesystem directory for photo uploads. Overridable in tests."""
+    settings = get_settings()
+    p = Path(settings.photo_upload_dir)
+    p.mkdir(parents=True, exist_ok=True)
+    return p
+
+
+def get_photo_url_prefix() -> str:
+    return get_settings().photo_url_prefix
+
+
+def _purge_existing(dir_: Path, player_id: int) -> None:
+    """Remove any previously uploaded photo for this player (any extension)."""
+    for f in dir_.glob(f"{player_id}.*"):
+        try:
+            f.unlink()
+        except OSError:
+            pass
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
 
@@ -183,6 +217,71 @@ async def admin_preview(
     )
 
 
+@router.patch("/players/{player_id}", response_model=PlayerSearchHit)
+async def admin_update_player(
+    player_id: int,
+    body: PlayerUpdate,
+    session: AsyncSession = Depends(get_session),
+    _: None = Depends(require_admin),
+) -> PlayerSearchHit:
+    """Partial player update — currently just `photo_url` (paste an external link)."""
+    player = await session.get(Player, player_id)
+    if player is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Player not found")
+    if body.photo_url is not None:
+        player.photo_url = body.photo_url or None
+    await session.commit()
+    await session.refresh(player)
+    return _hit(player)
+
+
+@router.post(
+    "/players/{player_id}/photo",
+    response_model=PhotoUploadResponse,
+    status_code=status.HTTP_201_CREATED,
+)
+async def admin_upload_photo(
+    player_id: int,
+    file: UploadFile = File(...),
+    session: AsyncSession = Depends(get_session),
+    photo_dir: Path = Depends(get_photo_dir),
+    url_prefix: str = Depends(get_photo_url_prefix),
+    _: None = Depends(require_admin),
+) -> PhotoUploadResponse:
+    """Upload a headshot file for a player. Overwrites any existing photo."""
+    player = await session.get(Player, player_id)
+    if player is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Player not found")
+
+    content_type = (file.content_type or "").lower()
+    if content_type not in _ALLOWED_CONTENT_TYPES:
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            f"Unsupported content type {content_type!r}; "
+            "expected image/jpeg, image/png, or image/webp",
+        )
+
+    max_bytes = get_settings().photo_max_bytes
+    data = await file.read(max_bytes + 1)
+    if len(data) > max_bytes:
+        raise HTTPException(
+            status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            f"Photo exceeds {max_bytes} bytes",
+        )
+    if not data:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Empty upload")
+
+    ext = _ALLOWED_CONTENT_TYPES[content_type]
+    _purge_existing(photo_dir, player_id)
+    dest = photo_dir / f"{player_id}{ext}"
+    dest.write_bytes(data)
+
+    url = f"{url_prefix.rstrip('/')}/{player_id}{ext}"
+    player.photo_url = url
+    await session.commit()
+    return PhotoUploadResponse(player_id=player_id, photo_url=url)
+
+
 def _hit(p: Player) -> PlayerSearchHit:
     return PlayerSearchHit(
         player_id=p.id,
@@ -190,4 +289,5 @@ def _hit(p: Player) -> PlayerSearchHit:
         debut_year=p.debut_year,
         final_year=p.final_year,
         primary_position=p.primary_position,
+        photo_url=p.photo_url,
     )

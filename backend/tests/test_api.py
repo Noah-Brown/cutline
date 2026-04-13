@@ -169,6 +169,68 @@ async def test_admin_categories_ok_with_token(client):
     assert any(c["key"] == "award_mvp_nl" for c in body)
 
 
+async def test_admin_set_photo_url_via_patch(client, seeded_puzzle):
+    # Grab a real player_id from the seeded puzzle via the public response.
+    puzzle = (await client.get("/api/puzzle/today")).json()
+    player_id = puzzle["players"][0]["player_id"]
+
+    r = await client.patch(
+        f"/api/admin/players/{player_id}",
+        headers={"Authorization": "Bearer dev-admin-token"},
+        json={"photo_url": "https://example.com/headshot.jpg"},
+    )
+    assert r.status_code == 200
+    assert r.json()["photo_url"] == "https://example.com/headshot.jpg"
+
+    # It should now come back in the public puzzle response.
+    refreshed = (await client.get("/api/puzzle/today")).json()
+    target = next(p for p in refreshed["players"] if p["player_id"] == player_id)
+    assert target["photo_url"] == "https://example.com/headshot.jpg"
+
+
+async def test_admin_upload_photo(client, seeded_puzzle, photo_dir):
+    puzzle = (await client.get("/api/puzzle/today")).json()
+    player_id = puzzle["players"][0]["player_id"]
+
+    # Minimal valid 1x1 PNG
+    png_bytes = bytes.fromhex(
+        "89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c489"
+        "0000000d49444154789c6300010000000500010d0a2db40000000049454e44ae426082"
+    )
+
+    r = await client.post(
+        f"/api/admin/players/{player_id}/photo",
+        headers={"Authorization": "Bearer dev-admin-token"},
+        files={"file": ("headshot.png", png_bytes, "image/png")},
+    )
+    assert r.status_code == 201
+    body = r.json()
+    assert body["player_id"] == player_id
+    assert body["photo_url"].endswith(f"/{player_id}.png")
+
+    # File persisted to the test-scoped photo dir
+    files = list(photo_dir.glob(f"{player_id}.*"))
+    assert len(files) == 1
+    assert files[0].read_bytes() == png_bytes
+
+    # And the URL now shows up on the public puzzle
+    refreshed = (await client.get("/api/puzzle/today")).json()
+    target = next(p for p in refreshed["players"] if p["player_id"] == player_id)
+    assert target["photo_url"] == body["photo_url"]
+
+
+async def test_admin_upload_rejects_non_image(client, seeded_puzzle):
+    puzzle = (await client.get("/api/puzzle/today")).json()
+    player_id = puzzle["players"][0]["player_id"]
+
+    r = await client.post(
+        f"/api/admin/players/{player_id}/photo",
+        headers={"Authorization": "Bearer dev-admin-token"},
+        files={"file": ("bogus.txt", b"hello", "text/plain")},
+    )
+    assert r.status_code == 400
+
+
 async def test_streak_with_single_play(client, seeded_puzzle):
     await client.post(
         "/api/puzzle/submit",

@@ -17,6 +17,7 @@ dependencies = [
     "pydantic>=2.6",
     "pydantic-settings>=2.2",
     "python-dateutil>=2.9",
+    "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]

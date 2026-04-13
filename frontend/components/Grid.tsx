@@ -21,6 +21,7 @@ export function Grid({ players, marks, onCycle, disabled }: GridProps) {
           <Card
             key={pos}
             name={p.name}
+            photoUrl={p.photo_url}
             mark={marks.get(pos) ?? "blank"}
             disabled={disabled}
             onCycle={() => onCycle(pos)}

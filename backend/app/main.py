@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.routers import admin as admin_router
@@ -26,6 +29,15 @@ def create_app() -> FastAPI:
     )
     app.include_router(puzzle_router.router)
     app.include_router(admin_router.router)
+
+    # Static mount for uploaded player photos.
+    upload_dir = Path(settings.photo_upload_dir)
+    upload_dir.mkdir(parents=True, exist_ok=True)
+    app.mount(
+        settings.photo_url_prefix,
+        StaticFiles(directory=upload_dir),
+        name="photos",
+    )
 
     @app.get("/health", tags=["meta"])
     async def health() -> dict[str, str]:
