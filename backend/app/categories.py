@@ -35,10 +35,14 @@ class Category:
 
 
 async def _award_qualifiers(session: AsyncSession, award_type: str, league: str | None) -> list[Player]:
+    from sqlalchemy import or_
+
     stmt = (
         select(Player)
         .join(Award, Award.player_id == Player.id)
         .where(Award.award_type == award_type)
+        # Only true winners: Lahman rows have notes=None; supplemental winners use notes="winner".
+        .where(or_(Award.notes.is_(None), Award.notes == "winner"))
     )
     if league is not None:
         stmt = stmt.where(Award.league == league)
