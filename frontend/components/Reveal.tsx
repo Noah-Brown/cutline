@@ -87,7 +87,7 @@ export function Reveal({ response, category }: RevealProps) {
               photoUrl={r.photo_url}
               result={r.result}
               explanation={r.explanation}
-              revealDelayMs={pos * 90}
+              revealDelayMs={pos * 500}
             />
           );
         })}
@@ -98,6 +98,9 @@ export function Reveal({ response, category }: RevealProps) {
       </p>
 
       <div className="flex flex-col items-center gap-3">
+        <pre className="whitespace-pre rounded-lg border border-navy-500/40 bg-navy-700/40 px-4 py-3 text-center font-mono text-sm leading-snug text-navy-50">
+          {share_text}
+        </pre>
         <div className="flex items-center gap-3">
           <ShareButton text={share_text} />
           <button

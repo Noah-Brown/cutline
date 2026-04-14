@@ -5,15 +5,16 @@ Each card gets one of three marks:
   • NO    — the player thinks this name is an imposter
   • BLANK — the player is unsure / left it alone
 
-Scoring:
+Scoring (correct calls only — wrong calls and blanks score 0):
   YES on qualifier  → +1 (CORRECT)
-  YES on imposter   → -1 (FALSE_POSITIVE)
   NO  on imposter   → +1 (CORRECT_REJECT)
-  NO  on qualifier  → -1 (WRONG_REJECT)
+  YES on imposter   →  0 (FALSE_POSITIVE)
+  NO  on qualifier  →  0 (WRONG_REJECT)
   BLANK on either   →  0 (UNANSWERED)
 
-max_score is always 9 (one point per correct confident answer).
-Minimum possible is -9.
+max_score is 9. The UI requires a mark on every card, so BLANK/UNANSWERED
+should not occur in real submissions — the model still supports it so the
+share-grid renderer and older submissions keep working.
 """
 
 from __future__ import annotations
@@ -63,8 +64,8 @@ def classify(is_qualifier: bool, mark: Mark) -> ResultKind:
 _POINTS: dict[ResultKind, int] = {
     ResultKind.CORRECT: 1,
     ResultKind.CORRECT_REJECT: 1,
-    ResultKind.FALSE_POSITIVE: -1,
-    ResultKind.WRONG_REJECT: -1,
+    ResultKind.FALSE_POSITIVE: 0,
+    ResultKind.WRONG_REJECT: 0,
     ResultKind.UNANSWERED: 0,
 }
 

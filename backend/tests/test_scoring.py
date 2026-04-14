@@ -55,11 +55,11 @@ def test_perfect_requires_yes_on_qualifiers_and_no_on_imposters() -> None:
     assert kinds == {ResultKind.CORRECT, ResultKind.CORRECT_REJECT}
 
 
-def test_worst_case_inverted_scores_minus_nine() -> None:
-    # YES on every imposter, NO on every qualifier
+def test_worst_case_inverted_scores_zero() -> None:
+    # YES on every imposter, NO on every qualifier — every call wrong, no points.
     marks = _marks(yes=IMPOSTERS, no=QUALIFIERS)
     result = score_submission(SAMPLE_ENTRIES, marks)
-    assert result.score == -9
+    assert result.score == 0
 
 
 def test_yes_on_qualifier_only_ignoring_imposters() -> None:
@@ -78,21 +78,21 @@ def test_no_on_imposters_only() -> None:
 
 
 def test_mixed_marks() -> None:
-    # YES on 4 qualifiers (+4), NO on 1 imposter (+1), YES on 1 imposter (-1),
-    # NO on 1 qualifier (-1), leave 2 blank (0)
+    # YES on 4 qualifiers (+4), NO on 1 imposter (+1), YES on 1 imposter (0),
+    # NO on 1 qualifier (0), leave 2 blank (0)
     marks: dict[int, Mark] = {
         0: Mark.YES,   # qualifier → +1
         1: Mark.YES,   # qualifier → +1
         3: Mark.YES,   # qualifier → +1
         4: Mark.YES,   # qualifier → +1
         2: Mark.NO,    # imposter  → +1
-        5: Mark.YES,   # imposter  → -1 (false positive)
-        6: Mark.NO,    # qualifier → -1 (wrong reject)
+        5: Mark.YES,   # imposter  →  0 (false positive)
+        6: Mark.NO,    # qualifier →  0 (wrong reject)
         # positions 7, 8 blank → 0
     }
-    # +4 (correct yes) +1 (correct no) -1 (FP) -1 (wrong reject) = 3
+    # 4 correct yes + 1 correct no = 5
     result = score_submission(SAMPLE_ENTRIES, marks)
-    assert result.score == 3
+    assert result.score == 5
     assert result.max_score == 9
 
     kinds = {o.grid_position: o.result for o in result.outcomes}

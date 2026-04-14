@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type CSSProperties } from "react";
 import { resolvePhotoUrl, type Mark, type ResultKind } from "@/lib/api";
 
 type Mode = "play" | "reveal";
@@ -18,18 +18,47 @@ type CardProps = {
 };
 
 function revealColors(result: ResultKind | undefined): string {
+  // Color = ground truth (green = qualifier, red = imposter).
+  // Icon (rendered separately) conveys whether the player's call was right.
   switch (result) {
     case "correct":
-    case "correct_reject":
+    case "wrong_reject":
       return "bg-emerald-500/30 border-emerald-400 text-emerald-50";
+    case "correct_reject":
     case "false_positive":
       return "bg-red-500/30 border-red-400 text-red-50";
-    case "wrong_reject":
-      return "bg-yellow-400/30 border-yellow-300 text-yellow-50";
     case "unanswered":
       return "bg-navy-700/50 border-navy-500/50 text-navy-100/80";
     default:
       return "bg-navy-700/60 border-navy-500/60 text-navy-50";
+  }
+}
+
+function revealBadge(
+  result: ResultKind | undefined,
+): { symbol: string; className: string } | null {
+  switch (result) {
+    case "correct":
+    case "correct_reject":
+      return { symbol: "✓", className: "text-emerald-300" };
+    case "false_positive":
+    case "wrong_reject":
+      return { symbol: "✕", className: "text-red-300" };
+    default:
+      return null;
+  }
+}
+
+function revealAnimation(result: ResultKind | undefined): string {
+  switch (result) {
+    case "correct":
+    case "correct_reject":
+      return "animate-reveal-right";
+    case "false_positive":
+    case "wrong_reject":
+      return "animate-reveal-wrong";
+    default:
+      return "animate-reveal";
   }
 }
 
@@ -107,14 +136,28 @@ export function Card({
 
   if (mode === "reveal") {
     const style = revealColors(result);
+    const badge = revealBadge(result);
+    const animClass = revealAnimation(result);
     return (
       <button
         type="button"
         onClick={() => setShowExplanation((v) => !v)}
-        style={{ animationDelay: revealDelayMs ? `${revealDelayMs}ms` : undefined }}
-        className={`animate-reveal ${baseClasses} ${style}`}
+        style={
+          {
+            "--reveal-delay": revealDelayMs ? `${revealDelayMs}ms` : "0ms",
+          } as CSSProperties
+        }
+        className={`${animClass} ${baseClasses} ${style}`}
         aria-label={`${name}: ${result ?? ""}`}
       >
+        {badge ? (
+          <span
+            className={`absolute right-2 top-2 text-base font-black ${badge.className}`}
+            aria-hidden
+          >
+            {badge.symbol}
+          </span>
+        ) : null}
         <PlayerAvatar name={name} photoUrl={photoUrl} />
         <span className="leading-tight">{name}</span>
         {showExplanation && explanation ? (

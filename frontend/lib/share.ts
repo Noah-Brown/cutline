@@ -29,6 +29,26 @@ export async function copyShareText(text: string): Promise<boolean> {
   return false;
 }
 
+export type ShareOutcome = "shared" | "copied" | "cancelled" | "error";
+
+/** Prefer the native share sheet (iOS/Android); fall back to clipboard. */
+export async function shareOrCopy(text: string): Promise<ShareOutcome> {
+  if (typeof navigator !== "undefined" && typeof navigator.share === "function") {
+    try {
+      await navigator.share({ text });
+      return "shared";
+    } catch (err) {
+      // User dismissed the share sheet — not an error.
+      if (err instanceof DOMException && err.name === "AbortError") {
+        return "cancelled";
+      }
+      // Anything else: fall through to clipboard.
+    }
+  }
+
+  return (await copyShareText(text)) ? "copied" : "error";
+}
+
 /** Format the time remaining until the next puzzle (midnight ET). */
 export function timeUntilNextPuzzle(now: Date = new Date()): string {
   // Compute midnight ET as a fixed UTC-4 offset (EDT). For EST you'd need

@@ -22,7 +22,7 @@ import { Header } from "@/components/Header";
 import { Reveal } from "@/components/Reveal";
 import { recordSubmission } from "@/lib/stats";
 
-const INSTRUCTION_KEY = "cutline_instructions_seen_v2";
+const INSTRUCTION_KEY = "cutline_instructions_seen_v3";
 
 function nextMark(current: Mark): Mark {
   if (current === "blank") return "yes";
@@ -139,7 +139,9 @@ export default function HomePage() {
   };
 
   const markCount = marks.size;
-  const canSubmit = markCount > 0 && !submitting;
+  const totalCards = puzzle?.players.length ?? 9;
+  const allMarked = markCount === totalCards;
+  const canSubmit = allMarked && !submitting;
 
   const content = useMemo(() => {
     if (loading) {
@@ -183,7 +185,8 @@ export default function HomePage() {
 
         <p className="text-center text-[11px] text-navy-100/60">
           Tap to cycle: blank → <span className="text-emerald-300">YES</span> →{" "}
-          <span className="text-red-300">NO</span> → blank
+          <span className="text-red-300">NO</span> → blank. Mark every card to
+          submit.
         </p>
 
         <div className="flex flex-col items-center gap-2">
@@ -196,9 +199,9 @@ export default function HomePage() {
             {submitting ? "Submitting…" : "Submit"}
           </button>
           <p className="text-xs text-navy-100/60">
-            {markCount === 0
-              ? "Mark at least one card to submit."
-              : `${markCount} marked · blanks are free (0 points)`}
+            {allMarked
+              ? `All ${totalCards} marked · ready to submit`
+              : `${markCount}/${totalCards} marked · mark every card to submit`}
           </p>
         </div>
       </section>
@@ -231,11 +234,10 @@ export default function HomePage() {
                 <span className="font-bold text-red-300">NO</span> — you think
                 it's an imposter
               </li>
-              <li>Blank — you're not sure (leave it alone)</li>
             </ul>
             <p className="mt-3 text-navy-100/90">
-              +1 for each right call. −1 for each wrong call. Blanks are free.
-              Max score: 9.
+              Mark every card (YES or NO), then submit. +1 for each correct
+              call, 0 for each wrong one. Max score: 9.
             </p>
             <button
               type="button"

@@ -26,18 +26,16 @@ cutline/
 
 ## Scoring
 
-Each card is a tri-state mark: **YES** (you think it qualifies), **NO** (you
-think it's an imposter), or **blank** (unsure). Tap to cycle blank → YES → NO
-→ blank.
+Each card is marked **YES** (you think it qualifies) or **NO** (you think
+it's an imposter). Tap to cycle blank → YES → NO → blank. You must mark
+every card before you can submit.
 
-|                | Qualifier          | Imposter          |
-| -------------- | ------------------ | ----------------- |
-| 🟢 YES (green) | **+1** correct      | **−1** false positive |
-| 🔴 NO (red)    | **−1** wrong reject | **+1** correct identify |
-| ⚪ Blank        | 0                  | 0                 |
+|                | Qualifier       | Imposter         |
+| -------------- | --------------- | ---------------- |
+| 🟢 YES (green) | **+1** correct  | 0 false positive |
+| 🔴 NO (red)    | 0 wrong reject  | **+1** correct identify |
 
-Max score = **9** (one point per confident-and-right answer). Min = −9.
-Blanks are free, so cautious play is viable.
+Max score = **9** (one point per correct call). Wrong calls score 0.
 
 ## Quick start
 

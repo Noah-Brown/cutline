@@ -60,8 +60,8 @@ async def test_submit_mixed_scoring(client, seeded_puzzle):
     )
     assert r.status_code == 200
     body = r.json()
-    # +4 correct, -1 FP (imposter said yes), -1 wrong reject (qual said no) = +2
-    assert body["score"] == 2
+    # 4 correct YES + 0 (FP) + 0 (wrong reject) = 4
+    assert body["score"] == 4
     assert body["max_score"] == 9
     assert body["perfect"] is False
 
