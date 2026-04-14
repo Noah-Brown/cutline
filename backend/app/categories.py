@@ -93,10 +93,7 @@ def _stat_career_category(
 
     async def qualifiers(session: AsyncSession) -> list[Player]:
         subq = (
-            select(
-                SeasonStat.player_id.label("pid"),
-                func.coalesce(func.sum(stat_column), 0).label("total"),
-            )
+            select(SeasonStat.player_id.label("pid"))
             .group_by(SeasonStat.player_id)
             .having(func.coalesce(func.sum(stat_column), 0) >= qualifier_threshold)
             .subquery()
@@ -107,10 +104,7 @@ def _stat_career_category(
     async def imposters(session: AsyncSession) -> list[Player]:
         lo, hi = imposter_range
         subq = (
-            select(
-                SeasonStat.player_id.label("pid"),
-                func.coalesce(func.sum(stat_column), 0).label("total"),
-            )
+            select(SeasonStat.player_id.label("pid"))
             .group_by(SeasonStat.player_id)
             .having(func.coalesce(func.sum(stat_column), 0).between(lo, hi))
             .subquery()

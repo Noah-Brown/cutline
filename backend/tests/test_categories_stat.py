@@ -53,6 +53,42 @@ async def test_stat_500_hr_qualifier_excluded_from_imposter(db):
     assert p.id not in {x.id for x in imposters}
 
 
+async def _add_player_with_hits(db, bbref: str, name: str, hit_totals: list[int]) -> Player:
+    p = Player(bbref_id=bbref, name_display=name)
+    db.add(p)
+    await db.flush()
+    for i, h in enumerate(hit_totals):
+        db.add(
+            SeasonStat(player_id=p.id, year=2000 + i, team="NYY", hits=h)
+        )
+    await db.commit()
+    return p
+
+
+@pytest.mark.asyncio
+async def test_stat_3000_hits_boundaries(db):
+    # 3,200 career hits (16 × 200) → qualifier
+    above = await _add_player_with_hits(db, "hit3200x01", "Over Three K", [200] * 16)
+    # Exactly 3,000 → qualifier
+    at = await _add_player_with_hits(db, "hit3000x01", "Exact Three K", [200] * 15)
+    # 2,700 (13.5 × 200 ≈ 2,700) → imposter (in 2500-2999 band)
+    near = await _add_player_with_hits(db, "hit2700x01", "Near Three K", [180] * 15)
+    # 1,500 hits → neither
+    low = await _add_player_with_hits(db, "hit1500x01", "Low Hits", [100] * 15)
+
+    category = REGISTRY["stat_3000_hits"]
+    qualifiers = await category.qualifier_fn(db)
+    imposters = await category.imposter_fn(db)
+
+    q_ids = {p.id for p in qualifiers}
+    i_ids = {p.id for p in imposters}
+
+    assert above.id in q_ids
+    assert at.id in q_ids
+    assert near.id in i_ids
+    assert low.id not in q_ids and low.id not in i_ids
+
+
 @pytest.mark.asyncio
 async def test_all_career_stat_categories_registered(db):
     for key in ("stat_500_hr", "stat_3000_hits", "stat_300_wins", "stat_3000_k", "stat_400_sb"):
