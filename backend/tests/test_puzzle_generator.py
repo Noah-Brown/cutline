@@ -208,3 +208,26 @@ async def test_generator_allows_category_after_rotation_window(db):
     puzzle = await generate_for_date(db, date(2026, 4, 15))
     assert puzzle is not None
     assert puzzle.category_type == "award_mvp_nl"
+
+
+from scripts.generate_puzzles import generate_range
+
+
+@pytest.mark.asyncio
+async def test_generate_range_writes_puzzles_for_each_date(db):
+    await _seed_viable_mvp_pool(db)
+    written = await generate_range(db, date(2026, 4, 15), days=1, dry_run=False)
+    assert len(written) == 1
+    assert written[0].puzzle_date == date(2026, 4, 15)
+
+
+@pytest.mark.asyncio
+async def test_generate_range_dry_run_writes_nothing(db):
+    await _seed_viable_mvp_pool(db)
+
+    written = await generate_range(db, date(2026, 4, 15), days=1, dry_run=True)
+    assert len(written) == 1  # the generator returned a Puzzle object
+
+    from sqlalchemy import func
+    count = (await db.execute(select(func.count()).select_from(Puzzle))).scalar()
+    assert count == 0  # but nothing was committed

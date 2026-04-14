@@ -12,6 +12,7 @@ from datetime import date, timedelta
 
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.categories import REGISTRY, Category
 from app.models import AllStarAppearance, Award, Player, Puzzle, PuzzleEntry, SeasonStat
@@ -234,10 +235,15 @@ def _stat_explanation(agg: _CareerAggregate, category_key: str, is_qualifier: bo
     return qualifier_text if is_qualifier else imposter_text
 
 
-async def generate_for_date(session: AsyncSession, target_date: date) -> Puzzle | None:
+async def generate_for_date(
+    session: AsyncSession, target_date: date, *, commit: bool = True
+) -> Puzzle | None:
     """Generate and persist a puzzle for `target_date`. Returns None if one already exists.
 
     Raises `GeneratorError` if no category has a viable gated pool.
+
+    When `commit` is False the puzzle is flushed to the session but not committed,
+    allowing the caller to roll back the transaction (e.g. for dry-run mode).
     """
     if await _puzzle_exists(session, target_date):
         return None
@@ -281,6 +287,16 @@ async def generate_for_date(session: AsyncSession, target_date: date) -> Puzzle 
             )
         )
 
-    await session.commit()
-    await session.refresh(puzzle, attribute_names=["entries"])
-    return puzzle
+    if commit:
+        await session.commit()
+    else:
+        await session.flush()
+
+    # Eagerly load entries + their players so callers can access them without
+    # triggering implicit lazy loads (which fail in async contexts).
+    result = await session.execute(
+        select(Puzzle)
+        .where(Puzzle.id == puzzle.id)
+        .options(selectinload(Puzzle.entries).selectinload(PuzzleEntry.player))
+    )
+    return result.scalar_one()
