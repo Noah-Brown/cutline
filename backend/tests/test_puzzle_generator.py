@@ -155,3 +155,56 @@ async def test_generate_for_date_same_seed_same_grid(db):
     assert p2 is not None
     p2_players = sorted(e.player_id for e in p2.entries)
     assert p1_players == p2_players
+
+
+@pytest.mark.asyncio
+async def test_generator_errors_when_no_category_viable(db):
+    # DB has nothing — every category has 0 qualifiers.
+    with pytest.raises(GeneratorError):
+        await generate_for_date(db, date(2026, 4, 15))
+
+
+@pytest.mark.asyncio
+async def test_generator_skips_recently_used_category(db):
+    await _seed_viable_mvp_pool(db)
+
+    # Pre-seed a puzzle with category_type "award_mvp_nl" 3 days ago. Since
+    # that's the only viable category in the DB, the generator should error
+    # (rotation excludes it).
+    db.add(
+        Puzzle(
+            puzzle_date=date(2026, 4, 12),
+            category_text="Won NL MVP",
+            category_type="award_mvp_nl",
+            imposter_count=3,
+            difficulty="medium",
+            published=True,
+        )
+    )
+    await db.commit()
+
+    with pytest.raises(GeneratorError):
+        await generate_for_date(db, date(2026, 4, 15))
+
+
+@pytest.mark.asyncio
+async def test_generator_allows_category_after_rotation_window(db):
+    await _seed_viable_mvp_pool(db)
+
+    # Puzzle 30 days ago — outside the 14-day rotation window, so award_mvp_nl
+    # is eligible again.
+    db.add(
+        Puzzle(
+            puzzle_date=date(2026, 3, 15),
+            category_text="Won NL MVP",
+            category_type="award_mvp_nl",
+            imposter_count=3,
+            difficulty="medium",
+            published=True,
+        )
+    )
+    await db.commit()
+
+    puzzle = await generate_for_date(db, date(2026, 4, 15))
+    assert puzzle is not None
+    assert puzzle.category_type == "award_mvp_nl"
