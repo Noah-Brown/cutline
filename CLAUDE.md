@@ -42,7 +42,10 @@ npm run typecheck                                         # tsc --noEmit
 `NEXT_PUBLIC_API_BASE` is baked in at build time. Leave empty to use relative `/api/...` paths through a reverse proxy (Caddy in prod).
 
 ### Data ingestion
-Lahman-formatted CSVs (Chadwick Bureau Baseball Databank) load via `python -m scripts.ingest_lahman --path <dir>` or `--zip <file.zip>`. Lahman only ships award *winners*; imposter near-misses need supplemental voting data tagged in `Award.notes` — see `app/categories.py`.
+Lahman-formatted CSVs (Chadwick Bureau Baseball Databank) load via `python -m scripts.ingest_lahman --path <dir>` or `--zip <file.zip>`. Winners come from `AwardsPlayers.csv`; non-winning vote recipients from `AwardsSharePlayers.csv` / `AwardsShareManagers.csv` are tagged in `Award.notes` as `top_3` (≥40% share) or `top_5`, feeding the imposter pool for award categories.
+
+### Automated puzzle generation
+`python -m scripts.generate_puzzles --days 7` produces published puzzles for the next 7 dates, skipping any date that already has one. Flags: `--date YYYY-MM-DD` for a single day, `--start YYYY-MM-DD --days N` for a range, `--dry-run` to preview. Generator logic lives in `app/puzzle_generator.py` — date-seeded weighted sampling over All-Star-gated pools, with a 14-day category rotation window and refuse-to-publish guardrails if pools are too thin.
 
 ### Docker Compose (full stack)
 `docker compose up -d --build` brings up postgres → migrate (one-shot) → backend → frontend → caddy. Configure via `.env` (see `.env.example`; `CUTLINE_DOMAIN` enables Let's Encrypt automatic TLS). Seed after first start with `docker compose exec backend python -m scripts.seed_sample`.
