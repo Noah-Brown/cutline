@@ -200,18 +200,24 @@ async def _load_awards(session: AsyncSession, opener: CsvOpener, id_map: dict[st
     print(f"  awards: {count} inserted")
 
 
-async def _load_award_shares(
-    session: AsyncSession, opener: CsvOpener, id_map: dict[str, int]
+async def _load_award_shares_common(
+    session: AsyncSession,
+    opener: CsvOpener,
+    id_map: dict[str, int],
+    filename: str,
+    resolve_award_type: Callable[[dict], str],
+    commit_every: int,
+    log_label: str,
 ) -> None:
-    """Load non-winner voting-share data into Award rows tagged top_3 / top_5.
+    """Shared implementation for loading award voting-share CSVs.
 
-    The existing `_award_near_misses` imposter query pulls Award rows where
-    `notes IS NOT NULL` and != winner. Tagging share-vote recipients with
-    top_3/top_5 makes them available as imposter candidates automatically.
+    Reads *filename* via *opener*, resolves the award_type for each row via
+    *resolve_award_type*, and inserts Award rows tagged top_3 / top_5 based on
+    the points_won / points_max ratio.  Commits in batches of *commit_every*.
     """
-    print("  award shares: AwardsSharePlayers.csv")
+    print(f"  {log_label}: {filename}")
     count = 0
-    for row in opener("AwardsSharePlayers.csv"):
+    for row in opener(filename):
         player_id = id_map.get(row.get("playerID", ""))
         if player_id is None:
             continue
@@ -221,8 +227,7 @@ async def _load_award_shares(
         if points_won <= 0 or points_max <= 0:
             continue
 
-        raw_name = row.get("awardID", "")
-        award_type = AWARD_NAME_MAP.get(raw_name, raw_name)
+        award_type = resolve_award_type(row)
         year = _int(row.get("yearID"))
         if year is None:
             continue
@@ -257,11 +262,33 @@ async def _load_award_shares(
             )
         )
         count += 1
-        if count % 1000 == 0:
+        if count % commit_every == 0:
             await session.commit()
 
     await session.commit()
-    print(f"  award shares: {count} inserted")
+    print(f"  {log_label}: {count} inserted")
+
+
+async def _load_award_shares(
+    session: AsyncSession, opener: CsvOpener, id_map: dict[str, int]
+) -> None:
+    """Load non-winner voting-share data into Award rows tagged top_3 / top_5.
+
+    The existing `_award_near_misses` imposter query pulls Award rows where
+    `notes IS NOT NULL` and != winner. Tagging share-vote recipients with
+    top_3/top_5 makes them available as imposter candidates automatically.
+    """
+    await _load_award_shares_common(
+        session=session,
+        opener=opener,
+        id_map=id_map,
+        filename="AwardsSharePlayers.csv",
+        resolve_award_type=lambda row: AWARD_NAME_MAP.get(
+            row.get("awardID", ""), row.get("awardID", "")
+        ),
+        commit_every=1000,
+        log_label="award shares",
+    )
 
 
 async def _load_award_share_managers(
@@ -272,56 +299,15 @@ async def _load_award_share_managers(
     Managers live in the same People table and share the id_map; award_type
     always maps to 'Manager of the Year'.
     """
-    print("  manager award shares: AwardsShareManagers.csv")
-    count = 0
-    for row in opener("AwardsShareManagers.csv"):
-        player_id = id_map.get(row.get("playerID", ""))
-        if player_id is None:
-            continue
-
-        points_won = _int(row.get("pointsWon")) or 0
-        points_max = _int(row.get("pointsMax")) or 0
-        if points_won <= 0 or points_max <= 0:
-            continue
-
-        year = _int(row.get("yearID"))
-        if year is None:
-            continue
-        league = row.get("lgID") or None
-        if league in ("", "ML"):
-            league = None
-
-        existing = (
-            await session.execute(
-                select(Award).where(
-                    Award.player_id == player_id,
-                    Award.award_type == "Manager of the Year",
-                    Award.year == year,
-                )
-            )
-        ).scalar_one_or_none()
-        if existing is not None:
-            continue
-
-        share = points_won / points_max
-        notes = "top_3" if share >= 0.40 else "top_5"
-
-        session.add(
-            Award(
-                player_id=player_id,
-                award_type="Manager of the Year",
-                year=year,
-                league=league,
-                team=None,
-                notes=notes,
-            )
-        )
-        count += 1
-        if count % 500 == 0:
-            await session.commit()
-
-    await session.commit()
-    print(f"  manager award shares: {count} inserted")
+    await _load_award_shares_common(
+        session=session,
+        opener=opener,
+        id_map=id_map,
+        filename="AwardsShareManagers.csv",
+        resolve_award_type=lambda row: "Manager of the Year",
+        commit_every=500,
+        log_label="manager award shares",
+    )
 
 
 async def _load_allstar(session: AsyncSession, opener: CsvOpener, id_map: dict[str, int]) -> None:
