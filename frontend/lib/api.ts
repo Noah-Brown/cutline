@@ -73,6 +73,13 @@ export async function fetchToday(): Promise<PuzzleResponse> {
   return handle<PuzzleResponse>(res);
 }
 
+export async function fetchByDate(date: string): Promise<PuzzleResponse> {
+  const res = await fetch(`${API_BASE}/api/puzzle/${encodeURIComponent(date)}`, {
+    cache: "no-store",
+  });
+  return handle<PuzzleResponse>(res);
+}
+
 export type MarksPayload = { yes: number[]; no: number[] };
 
 export async function submitMarks(args: {

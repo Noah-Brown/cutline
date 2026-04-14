@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  fetchByDate,
   fetchToday,
   submitMarks,
   type Mark,
@@ -59,9 +60,15 @@ export default function HomePage() {
 
   useEffect(() => {
     let cancelled = false;
+    // Optional ?date=YYYY-MM-DD preview: aim at the archive endpoint for QA
+    // of upcoming puzzles without perturbing the "today" rollover logic.
+    const previewDate =
+      typeof window !== "undefined"
+        ? new URLSearchParams(window.location.search).get("date")
+        : null;
     (async () => {
       try {
-        const p = await fetchToday();
+        const p = previewDate ? await fetchByDate(previewDate) : await fetchToday();
         if (cancelled) return;
         setPuzzle(p);
 

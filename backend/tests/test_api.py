@@ -136,6 +136,43 @@ async def test_archive_404_when_missing(client):
     assert r.status_code == 404
 
 
+async def test_archive_hides_future_puzzles(client, seeded_puzzle):
+    # Even if a puzzle is staged + published for a future date, the public
+    # archive endpoint must not leak it. Admin preview is the allowed path.
+    from datetime import timedelta
+
+    from app.database import SessionLocal
+    from app.models import Player, Puzzle, PuzzleEntry
+
+    future = seeded_puzzle["puzzle_date"] + timedelta(days=1)
+    async with SessionLocal() as s:
+        p = Player(bbref_id="future01", name_display="Future Player")
+        s.add(p)
+        await s.flush()
+        puz = Puzzle(
+            puzzle_date=future,
+            category_text="Future Category",
+            category_type="test",
+            imposter_count=2,
+            published=True,
+        )
+        s.add(puz)
+        await s.flush()
+        s.add(
+            PuzzleEntry(
+                puzzle_id=puz.id,
+                player_id=p.id,
+                grid_position=0,
+                is_qualifier=True,
+                explanation="x",
+            )
+        )
+        await s.commit()
+
+    r = await client.get(f"/api/puzzle/{future.isoformat()}")
+    assert r.status_code == 404
+
+
 async def test_stats_after_submission(client, seeded_puzzle):
     await client.post(
         "/api/puzzle/submit",

@@ -130,7 +130,7 @@ function PlayerBackground({
         src={resolved}
         alt=""
         onError={() => setErrored(true)}
-        className="absolute inset-0 h-full w-full object-cover"
+        className="absolute inset-0 h-full w-full object-cover object-top"
       />
     );
   }
