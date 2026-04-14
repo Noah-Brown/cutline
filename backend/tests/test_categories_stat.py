@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from app.categories import REGISTRY
-from app.models import Player, SeasonStat
+from app.models import AllStarAppearance, Player, SeasonStat
 
 
 async def _add_player_with_hr(db, bbref: str, name: str, hr_totals: list[int]) -> Player:
@@ -93,9 +93,6 @@ async def test_stat_3000_hits_boundaries(db):
 async def test_all_career_stat_categories_registered(db):
     for key in ("stat_500_hr", "stat_3000_hits", "stat_300_wins", "stat_3000_k", "stat_400_sb"):
         assert key in REGISTRY, f"{key} not in REGISTRY"
-
-
-from app.models import AllStarAppearance
 
 
 @pytest.mark.asyncio

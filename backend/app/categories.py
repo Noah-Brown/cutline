@@ -199,46 +199,6 @@ def _stat_allstar_count_category(
     return Category(key=key, display=display, qualifier_fn=qualifiers, imposter_fn=imposters)
 
 
-def _stat_40_40_category() -> Category:
-    """Hand-rolled 40/40 category (multi-column season predicate with exclusion)."""
-
-    async def qualifiers(session: AsyncSession) -> list[Player]:
-        stmt = (
-            select(Player)
-            .join(SeasonStat, SeasonStat.player_id == Player.id)
-            .where(SeasonStat.home_runs >= 40, SeasonStat.stolen_bases >= 40)
-            .distinct()
-        )
-        return list((await session.execute(stmt)).scalars().all())
-
-    async def imposters(session: AsyncSession) -> list[Player]:
-        qualifier_subq = (
-            select(SeasonStat.player_id)
-            .where(SeasonStat.home_runs >= 40, SeasonStat.stolen_bases >= 40)
-            .distinct()
-            .subquery()
-        )
-        imposter_subq = (
-            select(SeasonStat.player_id)
-            .where(SeasonStat.home_runs >= 35, SeasonStat.stolen_bases >= 35)
-            .distinct()
-            .subquery()
-        )
-        stmt = (
-            select(Player)
-            .join(imposter_subq, Player.id == imposter_subq.c.player_id)
-            .where(~Player.id.in_(select(qualifier_subq.c.player_id)))
-        )
-        return list((await session.execute(stmt)).scalars().all())
-
-    return Category(
-        key="stat_40_40",
-        display="Had a 40/40 season",
-        qualifier_fn=qualifiers,
-        imposter_fn=imposters,
-    )
-
-
 REGISTRY: dict[str, Category] = {
     c.key: c
     for c in (
@@ -269,7 +229,11 @@ REGISTRY: dict[str, Category] = {
             lambda: (SeasonStat.batting_avg >= 0.350) & (SeasonStat.games >= 100),
             lambda: (SeasonStat.batting_avg.between(0.330, 0.349)) & (SeasonStat.games >= 100),
         ),
-        _stat_40_40_category(),
+        _stat_season_category(
+            "stat_40_40", "Had a 40/40 season",
+            lambda: (SeasonStat.home_runs >= 40) & (SeasonStat.stolen_bases >= 40),
+            lambda: (SeasonStat.home_runs >= 35) & (SeasonStat.stolen_bases >= 35),
+        ),
         _stat_allstar_count_category("stat_10_allstar", "Made 10+ All-Star Games", 10, (7, 9)),
     )
 }
