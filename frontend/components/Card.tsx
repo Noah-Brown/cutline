@@ -17,20 +17,35 @@ type CardProps = {
   revealDelayMs?: number;
 };
 
-function revealColors(result: ResultKind | undefined): string {
-  // Color = ground truth (green = qualifier, red = imposter).
-  // Icon (rendered separately) conveys whether the player's call was right.
+// Color = ground truth (green = qualifier, red = imposter).
+// The ✓/✕ badge indicates whether the player's call was right.
+function revealTint(result: ResultKind | undefined): string {
   switch (result) {
     case "correct":
     case "wrong_reject":
-      return "bg-emerald-500/30 border-emerald-400 text-emerald-50";
+      return "bg-emerald-500/40";
     case "correct_reject":
     case "false_positive":
-      return "bg-red-500/30 border-red-400 text-red-50";
+      return "bg-red-500/40";
     case "unanswered":
-      return "bg-navy-700/50 border-navy-500/50 text-navy-100/80";
+      return "bg-navy-900/50";
     default:
-      return "bg-navy-700/60 border-navy-500/60 text-navy-50";
+      return "bg-black/20";
+  }
+}
+
+function revealBorder(result: ResultKind | undefined): string {
+  switch (result) {
+    case "correct":
+    case "wrong_reject":
+      return "border-emerald-400";
+    case "correct_reject":
+    case "false_positive":
+      return "border-red-400";
+    case "unanswered":
+      return "border-navy-500/50";
+    default:
+      return "border-navy-500/60";
   }
 }
 
@@ -40,10 +55,10 @@ function revealBadge(
   switch (result) {
     case "correct":
     case "correct_reject":
-      return { symbol: "✓", className: "text-emerald-300" };
+      return { symbol: "✓", className: "text-emerald-200" };
     case "false_positive":
     case "wrong_reject":
-      return { symbol: "✕", className: "text-red-300" };
+      return { symbol: "✕", className: "text-red-200" };
     default:
       return null;
   }
@@ -62,14 +77,26 @@ function revealAnimation(result: ResultKind | undefined): string {
   }
 }
 
-function playColors(mark: Mark | undefined): string {
+function playTint(mark: Mark | undefined): string {
   switch (mark) {
     case "yes":
-      return "bg-emerald-500/70 border-emerald-300 text-emerald-50 animate-pop";
+      return "bg-emerald-500/55";
     case "no":
-      return "bg-red-500/70 border-red-300 text-red-50 animate-pop";
+      return "bg-red-500/55";
     default:
-      return "bg-navy-700/70 border-navy-500/50 text-navy-50 hover:border-navy-100/70 hover:bg-navy-700";
+      // Subtle darkening over the photo for consistent contrast with the name bar.
+      return "bg-black/25";
+  }
+}
+
+function playBorder(mark: Mark | undefined): string {
+  switch (mark) {
+    case "yes":
+      return "border-emerald-300";
+    case "no":
+      return "border-red-300";
+    default:
+      return "border-navy-500/50";
   }
 }
 
@@ -86,7 +113,7 @@ function initialsFor(name: string): string {
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
 }
 
-function PlayerAvatar({
+function PlayerBackground({
   name,
   photoUrl,
 }: {
@@ -103,7 +130,7 @@ function PlayerAvatar({
         src={resolved}
         alt=""
         onError={() => setErrored(true)}
-        className="h-10 w-10 rounded-full object-cover ring-1 ring-navy-100/30 sm:h-12 sm:w-12"
+        className="absolute inset-0 h-full w-full object-cover"
       />
     );
   }
@@ -111,9 +138,11 @@ function PlayerAvatar({
   return (
     <div
       aria-hidden
-      className="flex h-10 w-10 items-center justify-center rounded-full bg-navy-900/60 text-[11px] font-bold uppercase tracking-wider text-navy-100/80 ring-1 ring-navy-100/20 sm:h-12 sm:w-12 sm:text-xs"
+      className="absolute inset-0 flex items-center justify-center bg-navy-900/90"
     >
-      {initialsFor(name)}
+      <span className="text-2xl font-bold uppercase tracking-wider text-navy-100/80 sm:text-3xl">
+        {initialsFor(name)}
+      </span>
     </div>
   );
 }
@@ -132,10 +161,19 @@ export function Card({
   const [showExplanation, setShowExplanation] = useState(false);
 
   const baseClasses =
-    "relative flex min-h-[108px] flex-col items-center justify-center gap-1 rounded-xl border-2 p-2 text-center text-xs font-semibold shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-100 sm:min-h-[128px] sm:text-sm";
+    "group relative aspect-square overflow-hidden rounded-xl border-2 shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-navy-100";
+
+  const nameBar = (
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/85 via-black/50 to-transparent px-2 pb-1.5 pt-7">
+      <span className="block text-center text-[11px] font-bold leading-tight text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] sm:text-xs">
+        {name}
+      </span>
+    </div>
+  );
 
   if (mode === "reveal") {
-    const style = revealColors(result);
+    const tint = revealTint(result);
+    const border = revealBorder(result);
     const badge = revealBadge(result);
     const animClass = revealAnimation(result);
     return (
@@ -147,33 +185,39 @@ export function Card({
             "--reveal-delay": revealDelayMs ? `${revealDelayMs}ms` : "0ms",
           } as CSSProperties
         }
-        className={`${animClass} ${baseClasses} ${style}`}
+        className={`${animClass} ${baseClasses} ${border}`}
         aria-label={`${name}: ${result ?? ""}`}
       >
+        <PlayerBackground name={name} photoUrl={photoUrl} />
+        <div className={`pointer-events-none absolute inset-0 ${tint}`} />
         {badge ? (
           <span
-            className={`absolute right-2 top-2 text-base font-black ${badge.className}`}
+            className={`absolute right-1.5 top-1.5 text-xl font-black leading-none drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)] ${badge.className}`}
             aria-hidden
           >
             {badge.symbol}
           </span>
         ) : null}
-        <PlayerAvatar name={name} photoUrl={photoUrl} />
-        <span className="leading-tight">{name}</span>
         {showExplanation && explanation ? (
-          <span className="mt-1 text-[11px] font-normal leading-snug text-navy-50/90 sm:text-xs">
-            {explanation}
-          </span>
-        ) : null}
+          <div className="absolute inset-0 flex items-center justify-center bg-black/80 px-2 text-center">
+            <span className="text-[11px] font-normal leading-snug text-navy-50">
+              {explanation}
+            </span>
+          </div>
+        ) : (
+          nameBar
+        )}
       </button>
     );
   }
 
   const interactive = !disabled && onCycle;
-  const style = playColors(mark);
+  const tint = playTint(mark);
+  const border = playBorder(mark);
   const disabledCls = disabled ? "opacity-60 cursor-not-allowed" : "cursor-pointer";
   const pressedState: "true" | "false" | "mixed" =
     mark === "yes" ? "true" : mark === "no" ? "false" : "mixed";
+  const popCls = mark === "yes" || mark === "no" ? "animate-pop" : "";
 
   return (
     <button
@@ -182,18 +226,19 @@ export function Card({
       aria-label={`${name} — ${mark ?? "unmarked"}`}
       disabled={!interactive}
       onClick={onCycle}
-      className={`${baseClasses} ${style} ${disabledCls}`}
+      className={`${baseClasses} ${border} ${popCls} ${disabledCls}`}
     >
+      <PlayerBackground name={name} photoUrl={photoUrl} />
+      <div className={`pointer-events-none absolute inset-0 ${tint}`} />
       {mark && mark !== "blank" ? (
         <span
-          className="absolute right-2 top-2 text-xs font-black"
+          className="absolute right-1.5 top-1.5 text-xl font-black leading-none text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.9)]"
           aria-hidden
         >
           {markBadge(mark)}
         </span>
       ) : null}
-      <PlayerAvatar name={name} photoUrl={photoUrl} />
-      <span className="leading-tight">{name}</span>
+      {nameBar}
     </button>
   );
 }
