@@ -63,7 +63,7 @@ async def _award_near_misses(session: AsyncSession, award_type: str, league: str
         select(Player)
         .join(Award, Award.player_id == Player.id)
         .where(Award.award_type == award_type)
-        .where(Award.notes.is_not(None))
+        .where(Award.notes.is_not(None), Award.notes != "winner")
     )
     if league is not None:
         stmt = stmt.where(Award.league == league)
