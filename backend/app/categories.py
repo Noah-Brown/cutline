@@ -19,10 +19,10 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Callable
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Award, Player
+from app.models import Award, Player, SeasonStat
 
 
 @dataclass(frozen=True)
@@ -78,9 +78,53 @@ def _award_category(key: str, display: str, award_type: str, league: str | None)
     return Category(key=key, display=display, qualifier_fn=qualifiers, imposter_fn=imposters)
 
 
+def _stat_career_category(
+    key: str,
+    display: str,
+    stat_column,
+    qualifier_threshold: int,
+    imposter_range: tuple[int, int],
+) -> Category:
+    """Build a career-total stat-milestone category.
+
+    Qualifier: SUM(stat_column) >= qualifier_threshold
+    Imposter:  SUM(stat_column) BETWEEN imposter_range[0] AND imposter_range[1]
+    """
+
+    async def qualifiers(session: AsyncSession) -> list[Player]:
+        subq = (
+            select(
+                SeasonStat.player_id.label("pid"),
+                func.coalesce(func.sum(stat_column), 0).label("total"),
+            )
+            .group_by(SeasonStat.player_id)
+            .having(func.coalesce(func.sum(stat_column), 0) >= qualifier_threshold)
+            .subquery()
+        )
+        stmt = select(Player).join(subq, Player.id == subq.c.pid)
+        return list((await session.execute(stmt)).scalars().all())
+
+    async def imposters(session: AsyncSession) -> list[Player]:
+        lo, hi = imposter_range
+        subq = (
+            select(
+                SeasonStat.player_id.label("pid"),
+                func.coalesce(func.sum(stat_column), 0).label("total"),
+            )
+            .group_by(SeasonStat.player_id)
+            .having(func.coalesce(func.sum(stat_column), 0).between(lo, hi))
+            .subquery()
+        )
+        stmt = select(Player).join(subq, Player.id == subq.c.pid)
+        return list((await session.execute(stmt)).scalars().all())
+
+    return Category(key=key, display=display, qualifier_fn=qualifiers, imposter_fn=imposters)
+
+
 REGISTRY: dict[str, Category] = {
     c.key: c
     for c in (
+        # Award categories
         _award_category("award_mvp_nl", "Won NL MVP", "MVP", "NL"),
         _award_category("award_mvp_al", "Won AL MVP", "MVP", "AL"),
         _award_category("award_cy_young_nl", "Won NL Cy Young", "Cy Young", "NL"),
@@ -90,6 +134,12 @@ REGISTRY: dict[str, Category] = {
         _award_category("award_ws_mvp", "Won World Series MVP", "World Series MVP", None),
         _award_category("award_manager_nl", "Won NL Manager of the Year", "Manager of the Year", "NL"),
         _award_category("award_manager_al", "Won AL Manager of the Year", "Manager of the Year", "AL"),
+        # Career stat-milestone categories
+        _stat_career_category("stat_500_hr",    "Hit 500+ career HR",          SeasonStat.home_runs,    500, (400, 499)),
+        _stat_career_category("stat_3000_hits", "3,000+ career hits",          SeasonStat.hits,         3000, (2500, 2999)),
+        _stat_career_category("stat_300_wins",  "300+ career wins",            SeasonStat.wins,         300, (240, 299)),
+        _stat_career_category("stat_3000_k",    "3,000+ career strikeouts",    SeasonStat.strikeouts,   3000, (2500, 2999)),
+        _stat_career_category("stat_400_sb",    "400+ career stolen bases",    SeasonStat.stolen_bases, 400, (300, 399)),
     )
 }
 
