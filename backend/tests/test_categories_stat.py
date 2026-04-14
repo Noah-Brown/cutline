@@ -93,3 +93,79 @@ async def test_stat_3000_hits_boundaries(db):
 async def test_all_career_stat_categories_registered(db):
     for key in ("stat_500_hr", "stat_3000_hits", "stat_300_wins", "stat_3000_k", "stat_400_sb"):
         assert key in REGISTRY, f"{key} not in REGISTRY"
+
+
+from app.models import AllStarAppearance
+
+
+@pytest.mark.asyncio
+async def test_stat_50_hr_season_qualifier(db):
+    # Best season 60 HR → qualifier
+    hi = Player(bbref_id="hi50xx01", name_display="Fifty Plus")
+    db.add(hi)
+    await db.flush()
+    db.add(SeasonStat(player_id=hi.id, year=2001, team="SFG", home_runs=60, games=162))
+
+    # Best season 47 HR → imposter
+    mid = Player(bbref_id="mid45xx01", name_display="Mid Forties")
+    db.add(mid)
+    await db.flush()
+    db.add(SeasonStat(player_id=mid.id, year=2001, team="NYY", home_runs=47, games=162))
+
+    # Best season 30 HR → neither
+    low = Player(bbref_id="low30xx01", name_display="Thirty")
+    db.add(low)
+    await db.flush()
+    db.add(SeasonStat(player_id=low.id, year=2001, team="BOS", home_runs=30, games=162))
+    await db.commit()
+
+    category = REGISTRY["stat_50_hr_season"]
+    qualifiers = await category.qualifier_fn(db)
+    imposters = await category.imposter_fn(db)
+    assert hi.id in {p.id for p in qualifiers}
+    assert mid.id in {p.id for p in imposters}
+    assert low.id not in {p.id for p in qualifiers} | {p.id for p in imposters}
+
+
+@pytest.mark.asyncio
+async def test_stat_40_40_qualifier(db):
+    # 40/40 season → qualifier
+    dual = Player(bbref_id="dual4040", name_display="Forty Forty")
+    db.add(dual)
+    await db.flush()
+    db.add(SeasonStat(player_id=dual.id, year=1998, team="SEA", home_runs=42, stolen_bases=46, games=162))
+
+    # 38/38 — never 40/40 → imposter
+    near = Player(bbref_id="near3838", name_display="Thirty Eight")
+    db.add(near)
+    await db.flush()
+    db.add(SeasonStat(player_id=near.id, year=1998, team="OAK", home_runs=38, stolen_bases=38, games=162))
+    await db.commit()
+
+    category = REGISTRY["stat_40_40"]
+    qualifiers = await category.qualifier_fn(db)
+    imposters = await category.imposter_fn(db)
+    assert dual.id in {p.id for p in qualifiers}
+    assert near.id in {p.id for p in imposters}
+    assert dual.id not in {p.id for p in imposters}
+
+
+@pytest.mark.asyncio
+async def test_stat_10_allstar_qualifier(db):
+    hi = Player(bbref_id="as11xx01", name_display="All Eleven")
+    low = Player(bbref_id="as08xx01", name_display="All Eight")
+    nope = Player(bbref_id="as00xx01", name_display="No Stars")
+    db.add_all([hi, low, nope])
+    await db.flush()
+    for y in range(2000, 2011):  # 11 all-star games
+        db.add(AllStarAppearance(player_id=hi.id, year=y))
+    for y in range(2000, 2008):  # 8 all-star games
+        db.add(AllStarAppearance(player_id=low.id, year=y))
+    await db.commit()
+
+    category = REGISTRY["stat_10_allstar"]
+    qualifiers = await category.qualifier_fn(db)
+    imposters = await category.imposter_fn(db)
+    assert hi.id in {p.id for p in qualifiers}
+    assert low.id in {p.id for p in imposters}
+    assert nope.id not in {p.id for p in qualifiers} | {p.id for p in imposters}

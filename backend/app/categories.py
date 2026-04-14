@@ -22,7 +22,7 @@ from typing import Callable
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.models import Award, Player, SeasonStat
+from app.models import AllStarAppearance, Award, Player, SeasonStat
 
 
 @dataclass(frozen=True)
@@ -115,6 +115,130 @@ def _stat_career_category(
     return Category(key=key, display=display, qualifier_fn=qualifiers, imposter_fn=imposters)
 
 
+def _stat_season_category(
+    key: str,
+    display: str,
+    qualifier_predicate,
+    imposter_predicate,
+) -> Category:
+    """Build a single-season-threshold stat category.
+
+    predicate callables take no args and return a SQLAlchemy boolean expression
+    over ``SeasonStat``. Qualifier = any season satisfies qualifier_predicate.
+    Imposter = some season satisfies imposter_predicate AND no season satisfies
+    qualifier_predicate.
+    """
+
+    async def qualifiers(session: AsyncSession) -> list[Player]:
+        stmt = (
+            select(Player)
+            .join(SeasonStat, SeasonStat.player_id == Player.id)
+            .where(qualifier_predicate())
+            .distinct()
+        )
+        return list((await session.execute(stmt)).scalars().all())
+
+    async def imposters(session: AsyncSession) -> list[Player]:
+        # Players with at least one imposter-band season
+        imposter_subq = (
+            select(SeasonStat.player_id)
+            .where(imposter_predicate())
+            .distinct()
+            .subquery()
+        )
+        # Players with any qualifier-season (to exclude)
+        qualifier_subq = (
+            select(SeasonStat.player_id)
+            .where(qualifier_predicate())
+            .distinct()
+            .subquery()
+        )
+        stmt = (
+            select(Player)
+            .join(imposter_subq, Player.id == imposter_subq.c.player_id)
+            .where(~Player.id.in_(select(qualifier_subq.c.player_id)))
+        )
+        return list((await session.execute(stmt)).scalars().all())
+
+    return Category(key=key, display=display, qualifier_fn=qualifiers, imposter_fn=imposters)
+
+
+def _stat_allstar_count_category(
+    key: str,
+    display: str,
+    qualifier_threshold: int,
+    imposter_range: tuple[int, int],
+) -> Category:
+    """Category keyed on COUNT(AllStarAppearance)."""
+
+    async def qualifiers(session: AsyncSession) -> list[Player]:
+        subq = (
+            select(
+                AllStarAppearance.player_id.label("pid"),
+            )
+            .group_by(AllStarAppearance.player_id)
+            .having(func.count() >= qualifier_threshold)
+            .subquery()
+        )
+        stmt = select(Player).join(subq, Player.id == subq.c.pid)
+        return list((await session.execute(stmt)).scalars().all())
+
+    async def imposters(session: AsyncSession) -> list[Player]:
+        lo, hi = imposter_range
+        subq = (
+            select(
+                AllStarAppearance.player_id.label("pid"),
+            )
+            .group_by(AllStarAppearance.player_id)
+            .having(func.count().between(lo, hi))
+            .subquery()
+        )
+        stmt = select(Player).join(subq, Player.id == subq.c.pid)
+        return list((await session.execute(stmt)).scalars().all())
+
+    return Category(key=key, display=display, qualifier_fn=qualifiers, imposter_fn=imposters)
+
+
+def _stat_40_40_category() -> Category:
+    """Hand-rolled 40/40 category (multi-column season predicate with exclusion)."""
+
+    async def qualifiers(session: AsyncSession) -> list[Player]:
+        stmt = (
+            select(Player)
+            .join(SeasonStat, SeasonStat.player_id == Player.id)
+            .where(SeasonStat.home_runs >= 40, SeasonStat.stolen_bases >= 40)
+            .distinct()
+        )
+        return list((await session.execute(stmt)).scalars().all())
+
+    async def imposters(session: AsyncSession) -> list[Player]:
+        qualifier_subq = (
+            select(SeasonStat.player_id)
+            .where(SeasonStat.home_runs >= 40, SeasonStat.stolen_bases >= 40)
+            .distinct()
+            .subquery()
+        )
+        imposter_subq = (
+            select(SeasonStat.player_id)
+            .where(SeasonStat.home_runs >= 35, SeasonStat.stolen_bases >= 35)
+            .distinct()
+            .subquery()
+        )
+        stmt = (
+            select(Player)
+            .join(imposter_subq, Player.id == imposter_subq.c.player_id)
+            .where(~Player.id.in_(select(qualifier_subq.c.player_id)))
+        )
+        return list((await session.execute(stmt)).scalars().all())
+
+    return Category(
+        key="stat_40_40",
+        display="Had a 40/40 season",
+        qualifier_fn=qualifiers,
+        imposter_fn=imposters,
+    )
+
+
 REGISTRY: dict[str, Category] = {
     c.key: c
     for c in (
@@ -134,6 +258,19 @@ REGISTRY: dict[str, Category] = {
         _stat_career_category("stat_300_wins",  "300+ career wins",            SeasonStat.wins,         300, (240, 299)),
         _stat_career_category("stat_3000_k",    "3,000+ career strikeouts",    SeasonStat.strikeouts,   3000, (2500, 2999)),
         _stat_career_category("stat_400_sb",    "400+ career stolen bases",    SeasonStat.stolen_bases, 400, (300, 399)),
+        # Season + all-star count categories
+        _stat_season_category(
+            "stat_50_hr_season", "Hit 50+ HR in a season",
+            lambda: SeasonStat.home_runs >= 50,
+            lambda: SeasonStat.home_runs.between(45, 49),
+        ),
+        _stat_season_category(
+            "stat_350_avg_season", "Hit .350+ in a qualified season",
+            lambda: (SeasonStat.batting_avg >= 0.350) & (SeasonStat.games >= 100),
+            lambda: (SeasonStat.batting_avg.between(0.330, 0.349)) & (SeasonStat.games >= 100),
+        ),
+        _stat_40_40_category(),
+        _stat_allstar_count_category("stat_10_allstar", "Made 10+ All-Star Games", 10, (7, 9)),
     )
 }
 
