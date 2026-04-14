@@ -277,8 +277,9 @@ async def get_archive(
 ) -> PuzzleResponse:
     # Reject future dates so staged-but-not-yet-released puzzles stay hidden
     # even when Published=True. Admins previewing upcoming puzzles use
-    # /api/admin/puzzle/preview with the bearer token instead.
-    if puzzle_date > _today_local():
+    # /api/admin/puzzle/preview with the bearer token instead. Local dev
+    # overrides via ALLOW_FUTURE_ARCHIVE=true.
+    if not get_settings().allow_future_archive and puzzle_date > _today_local():
         raise HTTPException(status.HTTP_404_NOT_FOUND, "No puzzle on that date")
     stmt = (
         select(Puzzle)

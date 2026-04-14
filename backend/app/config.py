@@ -23,6 +23,11 @@ class Settings(BaseSettings):
     admin_token: str = "dev-admin-token"
     game_name: str = "Cutline"
 
+    # If true, the public archive endpoint will return puzzles dated in the
+    # future (useful for local preview). On production this should stay False
+    # so staged puzzles don't leak before their release time.
+    allow_future_archive: bool = False
+
     # Player-photo storage (manual upload via admin API).
     # photo_upload_dir: filesystem directory where uploads are persisted.
     # photo_url_prefix: URL path that serves them (mounted via StaticFiles).
