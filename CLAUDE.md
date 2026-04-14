@@ -68,7 +68,7 @@ Lahman-formatted CSVs (Chadwick Bureau Baseball Databank) load via `python -m sc
 - `components/` — `Grid`, `Card`, `Header`, `Reveal`, `ShareButton`, `Stats`.
 
 ### Key conventions & invariants
-- **Date handling** — `_today_et()` in `routers/puzzle.py` approximates ET as UTC-4 (no DST). Per the inline note, swap to `zoneinfo('America/New_York')` when touching this.
+- **Date handling** — puzzles roll over at midnight US Central; `_today_local()` in `routers/puzzle.py` uses `zoneinfo("America/Chicago")` and the frontend `timeUntilNextPuzzle` mirrors that via `Intl` on `America/Chicago`. DST-safe on both sides.
 - **Scoring is tri-state**, not boolean. Submissions send `{yes: [...], no: [...]}`; unlisted positions are blank. Scoring is mirrored: YES on qualifier and NO on imposter both score +1.
 - **One puzzle per date.** `puzzles.puzzle_date` is UNIQUE; admin puzzle create returns 409 on conflict.
 - **One submission per (puzzle, session).** Session IDs are generated client-side and stored in localStorage.

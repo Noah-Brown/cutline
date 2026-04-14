@@ -49,24 +49,37 @@ export async function shareOrCopy(text: string): Promise<ShareOutcome> {
   return (await copyShareText(text)) ? "copied" : "error";
 }
 
-/** Format the time remaining until the next puzzle (midnight ET). */
+/** Format the time remaining until the next puzzle (midnight US Central). */
 export function timeUntilNextPuzzle(now: Date = new Date()): string {
-  // Compute midnight ET as a fixed UTC-4 offset (EDT). For EST you'd need
-  // proper DST handling; the MVP approximates, which is adequate for a countdown.
-  const nowUtcMs = now.getTime();
-  const etNow = new Date(nowUtcMs - 4 * 60 * 60 * 1000);
-  const nextEt = new Date(
-    Date.UTC(
-      etNow.getUTCFullYear(),
-      etNow.getUTCMonth(),
-      etNow.getUTCDate() + 1,
-      0,
-      0,
-      0,
-    ),
+  // Read the current moment as Chicago wall-clock components, then express
+  // both "CT now" and "next CT midnight" as UTC-labeled Dates. Their
+  // difference is the real-world ms until midnight CT and is correct across
+  // DST transitions because Intl handles the offset for us.
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Chicago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  });
+  const p = Object.fromEntries(
+    fmt
+      .formatToParts(now)
+      .filter((x) => x.type !== "literal")
+      .map((x) => [x.type, x.value]),
   );
-  const nextUtcMs = nextEt.getTime() + 4 * 60 * 60 * 1000;
-  const diffMs = Math.max(0, nextUtcMs - nowUtcMs);
+
+  const year = Number(p.year);
+  const month = Number(p.month) - 1;
+  const day = Number(p.day);
+  // Some browsers emit "24" for midnight; normalize to 0.
+  const hour = Number(p.hour) % 24;
+  const ctNowAsUtc = Date.UTC(year, month, day, hour, Number(p.minute), Number(p.second));
+  const nextMidnightAsUtc = Date.UTC(year, month, day + 1, 0, 0, 0);
+  const diffMs = Math.max(0, nextMidnightAsUtc - ctNowAsUtc);
 
   const h = Math.floor(diffMs / 3_600_000);
   const m = Math.floor((diffMs % 3_600_000) / 60_000);

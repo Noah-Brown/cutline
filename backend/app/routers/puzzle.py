@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from datetime import date, timezone, datetime
+from datetime import date, datetime
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import func, select
@@ -26,17 +27,13 @@ from app.scoring import Mark, render_share_text, score_submission
 router = APIRouter(prefix="/api/puzzle", tags=["puzzle"])
 
 
-def _today_et() -> date:
-    """Return the current date in US Eastern Time.
+# Puzzles roll over at midnight US Central Time; zoneinfo handles DST.
+_ROLLOVER_TZ = ZoneInfo("America/Chicago")
 
-    The design spec specifies midnight-ET releases. We approximate ET as
-    UTC-4 (EDT); in production use zoneinfo('America/New_York') to handle DST
-    correctly. zoneinfo is stdlib but the tzdata availability varies per OS,
-    and this service-level detail isn't worth a hard runtime dep for the MVP.
-    """
-    from datetime import timedelta
 
-    return (datetime.now(timezone.utc) - timedelta(hours=4)).date()
+def _today_local() -> date:
+    """Current date in the puzzle-rollover timezone (US Central)."""
+    return datetime.now(_ROLLOVER_TZ).date()
 
 
 async def _load_puzzle_with_entries(session: AsyncSession, puzzle_id: int) -> Puzzle | None:
@@ -80,7 +77,7 @@ def _to_puzzle_response(puzzle: Puzzle, puzzle_number: int) -> PuzzleResponse:
 
 @router.get("/today", response_model=PuzzleResponse)
 async def get_today(session: AsyncSession = Depends(get_session)) -> PuzzleResponse:
-    target = _today_et()
+    target = _today_local()
     stmt = (
         select(Puzzle)
         .where(Puzzle.puzzle_date == target)
@@ -117,7 +114,7 @@ async def get_stats(
 ) -> PuzzleStats:
     if puzzle_id is None:
         # Default: today's puzzle
-        target = _today_et()
+        target = _today_local()
         stmt = select(Puzzle).where(Puzzle.puzzle_date == target)
         puzzle = (await session.execute(stmt)).scalar_one_or_none()
         if puzzle is None:
@@ -173,7 +170,7 @@ async def get_streak(
         else:
             current_run = 1
 
-    today = _today_et()
+    today = _today_local()
     last = dates[-1]
     gap = (today - last).days
     # Current streak = run that is still "alive" (last play was today or yesterday)
