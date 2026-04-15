@@ -43,3 +43,6 @@ backend/uploads/
 .idea/
 *.swp
 .DS_Store
+
+# Claude Code
+CLAUDE.md
