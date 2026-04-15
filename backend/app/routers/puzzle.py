@@ -258,6 +258,7 @@ async def submit(
         outcomes=result.outcomes,
         score=result.score,
         max_score=result.max_score,
+        share_url=settings.share_url,
     )
 
     return SubmitResponse(

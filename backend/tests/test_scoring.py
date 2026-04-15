@@ -140,3 +140,19 @@ def test_share_text_format() -> None:
     assert lines[0].startswith("⚾ Cutline #42 — ")
     assert '"Won NL MVP"' in lines[0]
     assert lines[-1] == "Score: 9/9"
+
+
+def test_share_text_appends_url_when_set() -> None:
+    outcomes = [
+        EntryOutcome(i, True, Mark.YES, ResultKind.CORRECT) for i in range(9)
+    ]
+    text = render_share_text(
+        game_name="Cutline",
+        puzzle_number=42,
+        category_text="Won NL MVP",
+        outcomes=outcomes,
+        score=9,
+        max_score=9,
+        share_url="https://cutline.example/",
+    )
+    assert text.splitlines()[-1] == "https://cutline.example/"

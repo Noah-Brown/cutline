@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     admin_token: str = "dev-admin-token"
     game_name: str = "Cutline"
 
+    # Public URL appended to shared scores so recipients can click through.
+    # Empty string disables the appended link.
+    share_url: str = ""
+
     # If true, the public archive endpoint will return puzzles dated in the
     # future (useful for local preview). On production this should stay False
     # so staged puzzles don't leak before their release time.

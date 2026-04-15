@@ -134,11 +134,15 @@ def render_share_text(
     outcomes: list[EntryOutcome],
     score: int,
     max_score: int,
+    share_url: str = "",
 ) -> str:
     """Render the full shareable string, spoiler-free."""
     grid = render_share_grid(outcomes)
-    return (
+    text = (
         f"⚾ {game_name} #{puzzle_number} — \"{category_text}\"\n"
         f"{grid}\n"
         f"Score: {score}/{max_score}"
     )
+    if share_url:
+        text += f"\n{share_url}"
+    return text
