@@ -38,7 +38,7 @@ async def generate_range(
             puzzle = await generate_for_date(session, target, commit=not dry_run)
         except GeneratorError as exc:
             print(f"[{target}] ERROR: {exc}")
-            raise
+            break
         if puzzle is None:
             print(f"[{target}] skipped (puzzle already exists)")
             continue
@@ -68,7 +68,7 @@ def main() -> None:
         start = args.date
         days = 1
     else:
-        start = args.start or (date.today() + timedelta(days=1))
+        start = args.start or date.today()
         days = args.days or 1
 
     async def _run() -> None:
